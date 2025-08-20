@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
 import { FPLPlayer, FPLTeam } from '../types';
-import { fplApiService } from '../services/fplApi';
 import { styles } from '../styles/PlayersScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
@@ -64,53 +63,30 @@ const PlayersScreen: React.FC = () => {
       console.log(`  - PlayersModel: ${cachedData.playersModel?.length || 0}`);
       console.log(`  - Player Predictions: ${cachedData.playerPredictions?.length || 0}`);
       
-      // Use premerged model
-      if (cachedData.playersModel?.length) {
-        setPlayers(cachedData.playersModel as any);
+      // Use premerged model directly - no need to merge here
+      if (cachedData.playersModel && cachedData.playersModel.length > 0) {
+        console.log('✅ Using pre-merged playersModel with XP data');
+        setPlayers(cachedData.playersModel as FPLPlayer[]);
+        setTeams(cachedData.teams);
+        setFixtures(cachedData.fixtures);
+        setCurrentGameweek(cachedData.currentGameweek.id);
+        setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
+        setLoading(false);
       } else {
-        // Fallback to raw players if model missing
-        setPlayers(cachedData.fplPlayers);
+        console.log('⚠️ playersModel is empty, waiting for data to load...');
+        setLoading(true);
       }
-      setTeams(cachedData.teams);
-      setFixtures(cachedData.fixtures);
-      setCurrentGameweek(cachedData.currentGameweek.id);
-      setLastGameweek(cachedData.currentGameweek.id);
-      setLoading(false);
     } else if (!isDataLoaded) {
       console.log('⏳ Data still loading...');
+      setLoading(true);
     } else {
-      // Ultimate fallback only if absolutely no cache
-      console.log('⚠️ No cached data, fetching from API');
-      fetchData();
+      console.log('❌ No cached data available');
+      setLoading(false);
     }
   }, [cachedData, isDataLoaded]);
 
-  // Merge expected points data with players from cache
-  const playersWithXP = useMemo(() => {
-    // If players already include XP (playersModel), return directly
-    const hasXP = players.length > 0 && (players[0] as any).total_3gw_xp !== undefined;
-    if (hasXP) return players;
-
-    if (!cachedData?.playerPredictions?.length || !players.length) {
-      return players;
-    }
-    
-    const merged = players.map(player => {
-      const prediction = cachedData.playerPredictions.find((p: any) => p.player_id === player.id);
-      if (prediction) {
-        return {
-          ...player,
-          gw2_xp: prediction.gw2_xp,
-          gw3_xp: prediction.gw3_xp,
-          gw4_xp: prediction.gw4_xp,
-          total_3gw_xp: prediction.total_3gw_xp,
-        } as any;
-      }
-      return player as any;
-    });
-    
-    return merged;
-  }, [players, cachedData?.playerPredictions]);
+  // Remove the playersWithXP logic - we use playersModel directly
+  // const playersWithXP = useMemo(() => { ... });
 
   // Price options from £4.0m to £14.5m in £0.5m increments
   const priceOptions = useMemo<(string | number)[]>(() => {
@@ -121,28 +97,6 @@ const PlayersScreen: React.FC = () => {
     }
     return ['Unlimited', ...values];
   }, []);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [playersData, teamsData, gameweekData, fixturesData] = await Promise.all([
-        fplApiService.fetchAllPlayers(),
-        fplApiService.fetchAllTeams(),
-        fplApiService.getCurrentGameweek(),
-        fplApiService.fetchFixturesData(),
-      ]);
-      
-      setPlayers(playersData);
-      setTeams(teamsData);
-      setCurrentGameweek(gameweekData.id);
-      setLastGameweek(Math.max(1, gameweekData.id - 1));
-      setFixtures(fixturesData);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Get team by ID
   const getTeamById = (teamId: number): FPLTeam | undefined => {
@@ -171,7 +125,7 @@ const PlayersScreen: React.FC = () => {
 
   // Filter and sort players
   const filteredAndSortedPlayers = useMemo(() => {
-    let filtered = playersWithXP.filter(player => {
+    let filtered = players.filter(player => {
       // Search filter
       if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
@@ -290,7 +244,7 @@ const PlayersScreen: React.FC = () => {
     });
 
     return filtered;
-  }, [playersWithXP, searchQuery, filterConfig, sortConfig]);
+  }, [players, searchQuery, filterConfig, sortConfig]);
 
   // Update displayed players when filtered results change (now shows all players)
   useEffect(() => {
@@ -523,7 +477,7 @@ const PlayersScreen: React.FC = () => {
             >
               <View style={styles.clubDropdownItem}>
                 <Image 
-                  source={{ uri: fplApiService.getTeamBadgeUrl(team.code) }}
+                  source={{ uri: `https://fantasy.premierleague.com/api/bootstrap-static/2023/img/teams/${team.code}.png` }}
                   style={[
                     styles.clubBadge,
                     // Only apply red tint to Liverpool badge
