@@ -555,5 +555,20 @@ export const fplApiService = {
     // Find the player's position (rank) in the sorted list
     const rank = sortedPlayers.findIndex(p => p.id === playerId) + 1;
     return rank;
+  },
+
+  // Fetch element summary for a player (history + upcoming fixtures)
+  getElementSummary: async (playerId: number): Promise<any> => {
+    try {
+      const response = await fetch(`${fplApiService.baseUrl}/element-summary/${playerId}/`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error(`Error fetching element summary for player ${playerId}:`, error);
+      throw error;
+    }
   }
 }; 
