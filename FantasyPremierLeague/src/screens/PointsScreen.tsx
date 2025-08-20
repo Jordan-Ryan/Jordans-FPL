@@ -94,6 +94,14 @@ const PointsScreen: React.FC = () => {
     }
   }, [cachedData, isDataLoaded]);
 
+  // Auto-fetch squad once FPL data is present
+  useEffect(() => {
+    if (fplPlayers.length > 0 && !squadDataFetched && !squadLoading && selectedGameweek > 0) {
+      console.log('🚀 Auto-fetching squad for GW', selectedGameweek);
+      fetchSquadData(selectedGameweek);
+    }
+  }, [fplPlayers.length, selectedGameweek]);
+
   // Fetch squad data from FPL API
   const fetchSquadData = async (gameweek: number = selectedGameweek) => {
     console.log('🚀 fetchSquadData called with:', { gameweek, squadId, fplPlayersLength: fplPlayers.length });
@@ -328,11 +336,12 @@ const PointsScreen: React.FC = () => {
           
           {/* Fetch Squad Data Button - Right side */}
           <TouchableOpacity
-            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]
+            }
             onPress={() => setShowSquadModal(true)}
           >
             <Text style={styles.fetchButtonText}>
-              {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
+              Change Squad ID
             </Text>
           </TouchableOpacity>
         </View>
@@ -385,11 +394,12 @@ const PointsScreen: React.FC = () => {
           
           {/* Fetch Squad Data Button - Right side */}
           <TouchableOpacity
-            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]
+            }
             onPress={() => setShowSquadModal(true)}
           >
             <Text style={styles.fetchButtonText}>
-              {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
+              Change Squad ID
             </Text>
           </TouchableOpacity>
         </View>
