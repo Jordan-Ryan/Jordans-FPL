@@ -270,7 +270,7 @@ export class FPLPredictor2025_26 {
   async predictAllPlayers(fplApiService: any): Promise<PlayerPrediction[]> {
     console.log('🔮 Generating predictions for all players...');
 
-    const bootstrap = await fplApiService.getBootstrap();
+    const bootstrap = await fplApiService.fetchBootstrapData();
     const allPlayers = bootstrap.elements;
     const teams = bootstrap.teams;
 

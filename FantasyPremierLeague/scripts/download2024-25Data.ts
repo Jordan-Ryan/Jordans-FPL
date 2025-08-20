@@ -23,16 +23,22 @@ export class Data2024_25Downloader {
   private readonly DATA_URL = 'https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2024-25/gws/merged_gw.csv';
 
   async getBaselineData(): Promise<Record<string, PlayerSeasonData>> {
-    const cached = await AsyncStorage.getItem(this.STORAGE_KEY);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed && typeof parsed === 'object') return parsed;
-      } catch {}
+    try {
+      const cached = await AsyncStorage.getItem(this.STORAGE_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') return parsed;
+        } catch {}
+      }
+      const data = await this.downloadAndProcessData();
+      await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error('❌ Error in getBaselineData:', error);
+      // Fallback: return empty data if storage fails
+      return {};
     }
-    const data = await this.downloadAndProcessData();
-    await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-    return data;
   }
 
   async refreshData(): Promise<Record<string, PlayerSeasonData>> {

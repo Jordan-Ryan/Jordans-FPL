@@ -34,6 +34,12 @@ export function useExpectedPoints(fplApiService: any) {
 
         // Step 2: Generate predictions for all players
         setProgress('Generating expected points (99.7% accuracy)...');
+        console.log('🔮 Starting predictions with API service:', fplApiService);
+        
+        if (!fplApiService || typeof fplApiService.fetchBootstrapData !== 'function') {
+          throw new Error('FPL API service is not properly initialized or missing required methods');
+        }
+        
         const predictions = await predictor.predictAllPlayers(fplApiService);
 
         if (cancelled) return;
@@ -75,7 +81,8 @@ export function useExpectedPoints(fplApiService: any) {
     setError(null);
     // Force refresh by re-initializing
     await predictor.initialize();
-    window.location.reload(); // Simple refresh for now
+    // Note: window.location.reload() is not available in React Native
+    // The component will re-render when state changes
   };
 
   return {
