@@ -40,6 +40,13 @@ const PointsScreen: React.FC = () => {
   const [squadLoading, setSquadLoading] = useState(false);
   const [squadDataFetched, setSquadDataFetched] = useState(false);
   const [players, setPlayers] = useState<FPLPlayer[]>([]);
+  
+  // Squad performance data
+  const [squadPerformance, setSquadPerformance] = useState<{
+    totalPoints: number;
+    rank: number;
+    gameweek: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -117,10 +124,14 @@ const PointsScreen: React.FC = () => {
         setSquadDataFetched(true);
         setShowSquadModal(false);
         
-        Alert.alert(
-          'Success!', 
-          `Squad data fetched for Gameweek ${gameweek}\nTotal Points: ${data.entry_history?.points || 0}\nRank: ${data.entry_history?.rank || 'N/A'}`
-        );
+        // Store squad performance data for header display
+        setSquadPerformance({
+          totalPoints: data.entry_history?.points || 0,
+          rank: data.entry_history?.rank || 0,
+          gameweek: gameweek
+        });
+        
+        // No more popup alert - info will be shown in header
       } else {
         Alert.alert('Error', 'No squad data found for this gameweek');
       }
@@ -309,9 +320,20 @@ const PointsScreen: React.FC = () => {
             <Text style={styles.headerTitle}>
               {loading ? 'Loading...' : currentGameweek.name}
             </Text>
-            <Text style={styles.deadlineText}>
-              {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
-            </Text>
+            {squadPerformance ? (
+              <View style={styles.squadPerformance}>
+                <Text style={styles.performanceText}>
+                  GW{squadPerformance.gameweek}: {squadPerformance.totalPoints} pts
+                </Text>
+                <Text style={styles.rankText}>
+                  Rank: {squadPerformance.rank.toLocaleString()}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.deadlineText}>
+                {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
+              </Text>
+            )}
           </View>
           
           {/* Fetch Squad Data Button - Right side */}

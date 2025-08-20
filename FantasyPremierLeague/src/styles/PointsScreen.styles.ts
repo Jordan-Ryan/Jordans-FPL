@@ -361,4 +361,21 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: theme.spacing.lg,
   },
+
+  // Squad Performance Styles
+  squadPerformance: {
+    marginBottom: theme.spacing.md,
+  },
+
+  performanceText: {
+    fontSize: theme.typography.lg,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+  },
+
+  rankText: {
+    fontSize: theme.typography.md,
+    color: theme.colors.textSecondary,
+    opacity: 0.8,
+  },
 }); 
