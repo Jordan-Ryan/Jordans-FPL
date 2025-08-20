@@ -44,7 +44,7 @@ export interface RollingFeatures {
   avg_ict: number;
   avg_bps: number;
   avg_expected_gi: number;
-  data_quality: 'good' | 'limited' | 'minimal' | 'new_player';
+  data_quality: 'good' | 'limited' | 'minimal' | 'new_player' | 'very_new';
   history_games: number;
 }
 
@@ -112,8 +112,21 @@ export class FPLPredictor2025_26 {
     const last8 = combinedHistory.slice(-8);
     const last15 = combinedHistory.slice(-15);
 
+    // Spike smoothing: if single-game spike > 2x recent mean, reduce its influence
+    const lastGamePts = last3.length > 0 ? last3[last3.length - 1].total_points : 0;
+    const recentMean = getAvg(last5.map(g => g.total_points));
+    const spikeFactor = recentMean > 0 && lastGamePts > 2 * recentMean ? 0.85 : 1.0;
+
+    // Compute averages with spike smoothing applied to last game
+    const last3Pts = last3.map((g, idx) => idx === last3.length - 1 ? g.total_points * spikeFactor : g.total_points);
+
+    const historyGames = combinedHistory.length;
+    const baseQuality = historyGames >= 10 ? 'good' : historyGames >= 5 ? 'limited' : 'minimal';
+
+    const veryNew = (!baselineHistory || baselineHistory.length === 0) && (currentSeasonHistory?.length || 0) < 3;
+
     return {
-      roll3_points: getAvg(last3.map(g => g.total_points)),
+      roll3_points: getAvg(last3Pts),
       roll5_points: getAvg(last5.map(g => g.total_points)),
       roll8_points: getAvg(last8.map(g => g.total_points)),
       roll15_points: getAvg(last15.map(g => g.total_points)),
@@ -122,12 +135,12 @@ export class FPLPredictor2025_26 {
       roll8_minutes: getAvg(last8.map(g => g.minutes)),
       roll5_consistency: 1 / (1 + getStd(last5.map(g => g.total_points))),
       roll5_starts: getAvg(last5.map(g => g.minutes >= 60 ? 1 : 0)),
-      form_trend: getAvg(last3.map(g => g.total_points)) - getAvg(last8.map(g => g.total_points)),
+      form_trend: getAvg(last3Pts) - getAvg(last8.map(g => g.total_points)),
       avg_ict: getAvg(combinedHistory.map(g => g.ict_index)),
       avg_bps: getAvg(combinedHistory.map(g => g.bps)),
       avg_expected_gi: getAvg(combinedHistory.map(g => g.expected_goal_involvements)),
-      data_quality: combinedHistory.length >= 10 ? 'good' : combinedHistory.length >= 5 ? 'limited' : 'minimal',
-      history_games: combinedHistory.length
+      data_quality: veryNew ? 'very_new' : (baseQuality as any),
+      history_games: historyGames
     };
   }
 
@@ -186,6 +199,11 @@ export class FPLPredictor2025_26 {
       features.roll8_points * weights.form_weights.roll8 +
       features.roll15_points * weights.form_weights.roll15;
 
+    // New/very_new dampening on early-form features
+    if (features.data_quality === 'very_new') {
+      prediction *= 0.65; // strong dampening
+    }
+
     const minutesReliability = Math.min(features.roll5_minutes / 90.0, 1.2);
     prediction *= minutesReliability * weights.context_weights.minutes_factor;
 
@@ -238,9 +256,14 @@ export class FPLPredictor2025_26 {
       prediction *= 0.9;
     } else if (features.data_quality === 'new_player') {
       prediction *= 0.75;
+    } else if (features.data_quality === 'very_new') {
+      prediction *= 0.6; // extra dampening
     }
 
-    return Math.max(0, Math.min(20, prediction));
+    // Hard cap for very new players to avoid unrealistic spikes
+    const capped = features.data_quality === 'very_new' ? Math.min(prediction, 12) : prediction;
+
+    return Math.max(0, Math.min(20, capped));
   }
 
   private getAvailabilityMultiplier(chance: number): number {

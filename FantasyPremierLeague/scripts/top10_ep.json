@@ -1,0 +1,102 @@
+[
+  {
+    "id": 531,
+    "name": "Ballard",
+    "pos": "DEF",
+    "price": 4.6,
+    "gw2_xp": 20,
+    "gw3_xp": 20,
+    "gw4_xp": 20,
+    "total_3gw_xp": 60
+  },
+  {
+    "id": 82,
+    "name": "Semenyo",
+    "pos": "MID",
+    "price": 7.1,
+    "gw2_xp": 20,
+    "gw3_xp": 19.3,
+    "gw4_xp": 20,
+    "total_3gw_xp": 59.3
+  },
+  {
+    "id": 7,
+    "name": "Calafiori",
+    "pos": "DEF",
+    "price": 5.5,
+    "gw2_xp": 18.5,
+    "gw3_xp": 15.8,
+    "gw4_xp": 18.5,
+    "total_3gw_xp": 52.8
+  },
+  {
+    "id": 430,
+    "name": "Haaland",
+    "pos": "FWD",
+    "price": 14,
+    "gw2_xp": 17.6,
+    "gw3_xp": 15.1,
+    "gw4_xp": 17.6,
+    "total_3gw_xp": 50.3
+  },
+  {
+    "id": 525,
+    "name": "Wood",
+    "pos": "FWD",
+    "price": 7.6,
+    "gw2_xp": 15,
+    "gw3_xp": 17.6,
+    "gw4_xp": 15,
+    "total_3gw_xp": 47.6
+  },
+  {
+    "id": 597,
+    "name": "Richarlison",
+    "pos": "FWD",
+    "price": 6.5,
+    "gw2_xp": 14,
+    "gw3_xp": 16.4,
+    "gw4_xp": 14,
+    "total_3gw_xp": 44.4
+  },
+  {
+    "id": 164,
+    "name": "O'Riley",
+    "pos": "MID",
+    "price": 5.5,
+    "gw2_xp": 13.2,
+    "gw3_xp": 15.4,
+    "gw4_xp": 13.2,
+    "total_3gw_xp": 41.8
+  },
+  {
+    "id": 410,
+    "name": "Lewis",
+    "pos": "DEF",
+    "price": 5,
+    "gw2_xp": 14.4,
+    "gw3_xp": 12.3,
+    "gw4_xp": 14.4,
+    "total_3gw_xp": 41.1
+  },
+  {
+    "id": 661,
+    "name": "Ekitiké",
+    "pos": "FWD",
+    "price": 8.6,
+    "gw2_xp": 12,
+    "gw3_xp": 14.1,
+    "gw4_xp": 12,
+    "total_3gw_xp": 38.1
+  },
+  {
+    "id": 1,
+    "name": "Raya",
+    "pos": "GK",
+    "price": 5.5,
+    "gw2_xp": 12.7,
+    "gw3_xp": 10.9,
+    "gw4_xp": 12.7,
+    "total_3gw_xp": 36.3
+  }
+]
