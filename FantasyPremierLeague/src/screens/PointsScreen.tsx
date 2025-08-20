@@ -71,11 +71,14 @@ const PointsScreen: React.FC = () => {
           await fetchSquadData(gameweek.id);
         } catch (error) {
           console.log('Auto-fetch failed, user will need to fetch manually:', error);
-          // Don't set loading to false here, let user fetch manually
+          // Reset loading states to allow manual fetch
+          setSquadLoading(false);
+          setSquadDataFetched(false);
         }
         
       } catch (error) {
         console.error('Error fetching data:', error);
+        setLoading(false);
       } finally {
         setLoading(false);
       }
@@ -93,7 +96,15 @@ const PointsScreen: React.FC = () => {
 
     setSquadLoading(true);
     try {
-      const response = await fetch(`https://fantasy.premierleague.com/api/entry/${squadId.trim()}/event/${gameweek}/picks/`);
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`https://fantasy.premierleague.com/api/entry/${squadId.trim()}/event/${gameweek}/picks/`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -135,7 +146,11 @@ const PointsScreen: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching squad data:', error);
-      Alert.alert('Error', 'Failed to fetch squad data. Please check your Squad ID and try again.');
+      if (error instanceof Error && error.name === 'AbortError') {
+        Alert.alert('Error', 'Request timed out. Please check your connection and try again.');
+      } else {
+        Alert.alert('Error', 'Failed to fetch squad data. Please check your Squad ID and try again.');
+      }
     } finally {
       setSquadLoading(false);
     }
@@ -293,9 +308,14 @@ const PointsScreen: React.FC = () => {
         <View style={styles.content}>
           <View style={styles.squadLoadingContainer}>
             <Text style={styles.squadLoadingText}>
-              {squadDataFetched ? 'Loading squad data...' : 'Click "Fetch Squad Data" to load your FPL team'}
+              {squadLoading 
+                ? '🔄 Loading squad data...' 
+                : squadDataFetched 
+                  ? 'Loading squad data...' 
+                  : 'Click "Fetch Squad Data" to load your FPL team'
+              }
             </Text>
-            {!squadDataFetched && (
+            {!squadDataFetched && !squadLoading && (
               <TouchableOpacity
                 style={[styles.fetchButton, { backgroundColor: theme.colors.primary, marginTop: 20 }]}
                 onPress={() => setShowSquadModal(true)}
