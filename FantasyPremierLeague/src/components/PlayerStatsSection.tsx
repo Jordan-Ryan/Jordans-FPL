@@ -551,6 +551,7 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
                         bonus: selectedMatch.bonus || 0,
                         element_type: fplPlayer.element_type,
                         // Additional 2025/26 season stats
+                        defensive_contributions: selectedMatch.defensive_contributions,
                         clearances_blocks_interceptions: selectedMatch.clearances_blocks_interceptions,
                         recoveries: selectedMatch.recoveries,
                         tackles: selectedMatch.tackles,
@@ -648,10 +649,27 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
                             <View style={styles.pointItem}>
                               <Text style={[styles.pointLabel, { color: theme.colors.textSecondary }]}>Defensive Contributions</Text>
                               <Text style={[styles.pointValue, { color: theme.colors.text }]}>
-                                {fplPlayer.element_type === 2 ? '10+' : '12+'} actions
+                                {selectedMatch.defensive_contributions || 'N/A'}
                               </Text>
                               <Text style={[styles.pointPoints, { color: theme.colors.primary }]}>
                                 {pointsBreakdown.defensive_contributions_points} pts
+                              </Text>
+                            </View>
+                          )}
+
+                          {/* Debug: Show actual defensive stats if available */}
+                          {(selectedMatch.clearances_blocks_interceptions !== undefined || 
+                            selectedMatch.recoveries !== undefined || 
+                            selectedMatch.tackles !== undefined) && (
+                            <View style={styles.pointItem}>
+                              <Text style={[styles.pointLabel, { color: theme.colors.textSecondary }]}>Defensive Stats (Debug)</Text>
+                              <Text style={[styles.pointValue, { color: theme.colors.text }]}>
+                                CBI: {selectedMatch.clearances_blocks_interceptions || 0}, 
+                                Rec: {selectedMatch.recoveries || 0}, 
+                                Tackles: {selectedMatch.tackles || 0}
+                              </Text>
+                              <Text style={[styles.pointPoints, { color: theme.colors.primary }]}>
+                                Total: {(selectedMatch.clearances_blocks_interceptions || 0) + (selectedMatch.recoveries || 0) + (selectedMatch.tackles || 0)}
                               </Text>
                             </View>
                           )}

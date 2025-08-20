@@ -16,6 +16,7 @@ export interface FPLMatchStats {
   bonus: number;
   element_type: number; // 1=GK, 2=DEF, 3=MID, 4=FWD
   // Additional stats for 2025/26 season
+  defensive_contributions?: number; // API field for defensive contributions points
   clearances_blocks_interceptions?: number;
   recoveries?: number;
   tackles?: number;
@@ -182,7 +183,12 @@ export class FPLPointsCalculator {
     
     // Defensive contributions points
     let defensive_contributions_points = 0;
-    if (stats.clearances_blocks_interceptions !== undefined && stats.recoveries !== undefined && stats.tackles !== undefined) {
+    
+    // Use the API's defensive_contributions field if available
+    if (stats.defensive_contributions !== undefined && stats.defensive_contributions > 0) {
+      defensive_contributions_points = stats.defensive_contributions;
+    } else if (stats.clearances_blocks_interceptions !== undefined && stats.recoveries !== undefined && stats.tackles !== undefined) {
+      // Fallback to calculation if API field not available
       const totalDefensiveActions = stats.clearances_blocks_interceptions + stats.recoveries + stats.tackles;
       
       if (position === 2) { // Defender
@@ -192,6 +198,29 @@ export class FPLPointsCalculator {
       } else if (position === 3 || position === 4) { // Midfielder or Forward
         if (totalDefensiveActions >= this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.MID_FWD.threshold) {
           defensive_contributions_points = this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.MID_FWD.points;
+        }
+      }
+    } else {
+      // Handle missing defensive stats - use alternative calculation if available
+      // Check if we have at least some defensive data
+      const hasSomeDefensiveData = stats.clearances_blocks_interceptions !== undefined || 
+                                   stats.recoveries !== undefined || 
+                                   stats.tackles !== undefined;
+      
+      if (hasSomeDefensiveData) {
+        // Use available defensive stats with a lower threshold
+        const availableDefensiveActions = (stats.clearances_blocks_interceptions || 0) + 
+                                        (stats.recoveries || 0) + 
+                                        (stats.tackles || 0);
+        
+        if (position === 2) { // Defender
+          if (availableDefensiveActions >= 8) { // Lower threshold for partial data
+            defensive_contributions_points = this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.DEF.points;
+          }
+        } else if (position === 3 || position === 4) { // Midfielder or Forward
+          if (availableDefensiveActions >= 10) { // Lower threshold for partial data
+            defensive_contributions_points = this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.MID_FWD.points;
+          }
         }
       }
     }
