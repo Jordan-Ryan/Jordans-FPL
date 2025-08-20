@@ -657,23 +657,6 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
                             </View>
                           )}
 
-                          {/* Debug: Show actual defensive stats if available */}
-                          {(selectedMatch.clearances_blocks_interceptions !== undefined || 
-                            selectedMatch.recoveries !== undefined || 
-                            selectedMatch.tackles !== undefined) && (
-                            <View style={styles.pointItem}>
-                              <Text style={[styles.pointLabel, { color: theme.colors.textSecondary }]}>Defensive Stats (Debug)</Text>
-                              <Text style={[styles.pointValue, { color: theme.colors.text }]}>
-                                CBI: {selectedMatch.clearances_blocks_interceptions || 0}, 
-                                Rec: {selectedMatch.recoveries || 0}, 
-                                Tackles: {selectedMatch.tackles || 0}
-                              </Text>
-                              <Text style={[styles.pointPoints, { color: theme.colors.primary }]}>
-                                Total: {(selectedMatch.clearances_blocks_interceptions || 0) + (selectedMatch.recoveries || 0) + (selectedMatch.tackles || 0)}
-                              </Text>
-                            </View>
-                          )}
-                          
                           {/* Pass Completion */}
                           {pointsBreakdown.pass_completion_points > 0 && (
                             <View style={styles.pointItem}>

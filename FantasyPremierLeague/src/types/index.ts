@@ -55,6 +55,12 @@ export interface FPLPlayer {
   gw3Xp?: number;
   gw4Xp?: number;
   threeGwXp?: number;
+  // Squad-specific properties
+  squad_position?: number;
+  is_starter?: boolean;
+  is_captain?: boolean;
+  is_vice_captain?: boolean;
+  multiplier?: number;
 }
 
 export interface FPLTeam {

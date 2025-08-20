@@ -12,9 +12,8 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { Player, FPLPlayer, FPLTeam } from '../types';
+import { FPLPlayer, FPLTeam } from '../types';
 import { fplApiService } from '../services/fplApi';
-import { squadData, squadHelpers } from '../data/squadData';
 import SquadManager from '../components/SquadManager';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
@@ -24,44 +23,46 @@ const PointsScreen: React.FC = () => {
   const theme = useTheme();
   const { width } = Dimensions.get('window');
   
-  // Use the squad data model instead of hardcoded data
-  const [players, setPlayers] = useState<Player[]>([]);
+  // State for FPL data
   const [fplPlayers, setFplPlayers] = useState<FPLPlayer[]>([]);
   const [teams, setTeams] = useState<FPLTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSquadManager, setShowSquadManager] = useState(false);
   const [currentGameweek, setCurrentGameweek] = useState<{ id: number; name: string; deadline: string }>({ id: 1, name: 'Gameweek 1', deadline: 'TBD' });
   const [fixtures, setFixtures] = useState<any[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
 
-  // New state for squad data fetching
+  // Squad data fetching state
   const [showSquadModal, setShowSquadModal] = useState(false);
   const [squadId, setSquadId] = useState('397418');
   const [selectedGameweek, setSelectedGameweek] = useState(1);
   const [squadLoading, setSquadLoading] = useState(false);
   const [squadDataFetched, setSquadDataFetched] = useState(false);
+  const [players, setPlayers] = useState<FPLPlayer[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        // Fetch current gameweek
-        const gameweek = await fplApiService.getCurrentGameweek();
-        setCurrentGameweek(gameweek);
-        
-        // Fetch FPL data
-        const [playersData, teamsData, fixturesData] = await Promise.all([
+        // Fetch current gameweek and FPL data
+        const [gameweek, playersData, teamsData, fixturesData] = await Promise.all([
+          fplApiService.getCurrentGameweek(),
           fplApiService.fetchAllPlayers(),
           fplApiService.fetchAllTeams(),
           fplApiService.fetchFixturesData(),
         ]);
         
+        setCurrentGameweek(gameweek);
         setFplPlayers(playersData);
         setTeams(teamsData);
         setFixtures(fixturesData);
-        setPlayers(squadData);
+        
+        // Auto-fetch squad data for the most recent gameweek
+        setSelectedGameweek(gameweek.id);
+        await fetchSquadData(gameweek.id);
+        
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -72,17 +73,8 @@ const PointsScreen: React.FC = () => {
     fetchData();
   }, []);
 
-  // Handle squad updates from SquadManager
-  const handleSquadUpdate = (updatedSquad: Player[]) => {
-    setPlayers(updatedSquad);
-    console.log('Squad updated in PointsScreen:', updatedSquad);
-    
-    // Here you could save to AsyncStorage or send to your backend
-    // For now, we'll just update the local state
-  };
-
   // Fetch squad data from FPL API
-  const fetchSquadData = async () => {
+  const fetchSquadData = async (gameweek: number = selectedGameweek) => {
     if (!squadId.trim()) {
       Alert.alert('Error', 'Please enter a valid Squad ID');
       return;
@@ -90,7 +82,7 @@ const PointsScreen: React.FC = () => {
 
     setSquadLoading(true);
     try {
-      const response = await fetch(`https://fantasy.premierleague.com/api/entry/${squadId.trim()}/event/${selectedGameweek}/picks/`);
+      const response = await fetch(`https://fantasy.premierleague.com/api/entry/${squadId.trim()}/event/${gameweek}/picks/`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -99,36 +91,22 @@ const PointsScreen: React.FC = () => {
       const data = await response.json();
       
       if (data.picks && data.picks.length > 0) {
-        // Convert FPL API data to our Player format
-        const convertedPlayers: Player[] = data.picks.map((pick: any, index: number) => {
+        // Convert FPL API data to FPLPlayer format for display
+        const convertedPlayers: FPLPlayer[] = data.picks.map((pick: any) => {
           const fplPlayer = fplPlayers.find(p => p.id === pick.element);
-          const isStarter = pick.position <= 11;
-          
-          return {
-            id: pick.element,
-            name: fplPlayer?.web_name || `Player ${pick.element}`,
-            team: fplPlayer?.team || 0,
-            team_position: pick.position,
-            starter: isStarter,
-            captain: pick.is_captain,
-            vice_captain: pick.is_vice_captain,
-            multiplier: pick.multiplier,
-            points: pick.multiplier > 0 ? (fplPlayer?.event_points || 0) * pick.multiplier : 0,
-            price: fplPlayer?.now_cost || 0,
-            form: fplPlayer?.form || '0.0',
-            total_points: fplPlayer?.total_points || 0,
-            ict_index: fplPlayer?.ict_index || '0.0',
-            selected_by_percent: fplPlayer?.selected_by_percent || '0.0',
-            transfers_in: fplPlayer?.transfers_in || 0,
-            transfers_out: fplPlayer?.transfers_out || 0,
-            dreamteam_count: fplPlayer?.dreamteam_count || 0,
-            status: fplPlayer?.status || 'a',
-            special: fplPlayer?.special || false,
-            chance_of_playing_next_round: fplPlayer?.chance_of_playing_next_round,
-            chance_of_playing_this_round: fplPlayer?.chance_of_playing_this_round,
-            news: fplPlayer?.news || '',
-          };
-        });
+          if (fplPlayer) {
+            return {
+              ...fplPlayer,
+              // Add squad-specific data
+              squad_position: pick.position,
+              is_starter: pick.position <= 11,
+              is_captain: pick.is_captain,
+              is_vice_captain: pick.is_vice_captain,
+              multiplier: pick.multiplier,
+            };
+          }
+          return fplPlayer;
+        }).filter(Boolean);
         
         setPlayers(convertedPlayers);
         setSquadDataFetched(true);
@@ -136,7 +114,7 @@ const PointsScreen: React.FC = () => {
         
         Alert.alert(
           'Success!', 
-          `Squad data fetched for Gameweek ${selectedGameweek}\nTotal Points: ${data.entry_history?.points || 0}\nRank: ${data.entry_history?.rank || 'N/A'}`
+          `Squad data fetched for Gameweek ${gameweek}\nTotal Points: ${data.entry_history?.points || 0}\nRank: ${data.entry_history?.rank || 'N/A'}`
         );
       } else {
         Alert.alert('Error', 'No squad data found for this gameweek');
@@ -149,12 +127,23 @@ const PointsScreen: React.FC = () => {
     }
   };
 
+  // Handle squad updates from SquadManager
+  const handleSquadUpdate = (updatedSquad: any[]) => {
+    console.log('Squad updated in PointsScreen:', updatedSquad);
+    // This is no longer needed since we're using FPL API data
+  };
+
   // Get squad statistics
-  const squadStats = squadHelpers.getSquadStats();
+  const squadStats = {
+    totalPlayers: players.length,
+    activePlayers: players.filter(p => p.status === 'a').length,
+    startingXI: players.filter(p => p.is_starter).length,
+    benchPlayers: players.filter(p => !p.is_starter).length,
+  };
 
   // Helper functions for the pitch layout
-  const startingXI = players.filter(p => p.starter && p.id !== 0);
-  const benchPlayers = players.filter(p => !p.starter && p.id !== 0);
+  const startingXI = players.filter(p => p.is_starter && p.id !== 0);
+  const benchPlayers = players.filter(p => !p.is_starter && p.id !== 0);
 
   // Helper function to get player by ID
   const getPlayerById = (id: number): FPLPlayer | undefined => {
@@ -214,27 +203,27 @@ const PointsScreen: React.FC = () => {
   };
 
   const getDefPosition = (index: number) => {
-    const defenders = startingXI.filter(p => p.team_position && getPositionName(p.team_position) === 'DEF').length;
+    const defenders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'DEF').length;
     const spacing = width / defenders;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 154, left };
   };
 
   const getMidPosition = (index: number) => {
-    const midfielders = startingXI.filter(p => p.team_position && getPositionName(p.team_position) === 'MID').length;
+    const midfielders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'MID').length;
     const spacing = width / midfielders;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 264, left };
   };
 
   const getFwdPosition = (index: number) => {
-    const forwards = startingXI.filter(p => p.team_position && getPositionName(p.team_position) === 'FWD').length;
+    const forwards = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'FWD').length;
     const spacing = width / forwards;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 374, left };
   };
 
-  const handlePlayerPress = (player: Player) => {
+  const handlePlayerPress = (player: FPLPlayer) => {
     setSelectedPlayer(player);
     setShowPlayerDetails(true);
   };
@@ -361,7 +350,7 @@ const PointsScreen: React.FC = () => {
               
               <TouchableOpacity
                 style={[styles.modalButton, styles.fetchButton, { backgroundColor: theme.colors.primary }]}
-                onPress={fetchSquadData}
+                onPress={() => fetchSquadData(selectedGameweek)}
                 disabled={squadLoading}
               >
                 <Text style={styles.fetchButtonText}>
@@ -394,12 +383,12 @@ const PointsScreen: React.FC = () => {
                 onPress={() => handlePlayerPress(startingXI[0])}
               >
                 {/* Captain/Vice-Captain Badge */}
-                {startingXI[0] && startingXI[0].captain && (
+                {startingXI[0] && startingXI[0].is_captain && (
                   <View style={styles.captainBadge}>
                     <Text style={styles.captainText}>C</Text>
                   </View>
                 )}
-                {startingXI[0] && startingXI[0].vice_captain && (
+                {startingXI[0] && startingXI[0].is_vice_captain && (
                   <View style={styles.viceCaptainBadge}>
                     <Text style={styles.viceCaptainText}>VC</Text>
                   </View>
@@ -436,12 +425,12 @@ const PointsScreen: React.FC = () => {
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
-                  {player.captain && (
+                  {player.is_captain && (
                     <View style={styles.captainBadge}>
                       <Text style={styles.captainText}>C</Text>
                     </View>
                   )}
-                  {player.vice_captain && (
+                  {player.is_vice_captain && (
                     <View style={styles.viceCaptainBadge}>
                       <Text style={styles.viceCaptainText}>VC</Text>
                     </View>
@@ -479,12 +468,12 @@ const PointsScreen: React.FC = () => {
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
-                  {player.captain && (
+                  {player.is_captain && (
                     <View style={styles.captainBadge}>
                       <Text style={styles.captainText}>C</Text>
                     </View>
                   )}
-                  {player.vice_captain && (
+                  {player.is_vice_captain && (
                     <View style={styles.viceCaptainBadge}>
                       <Text style={styles.viceCaptainText}>VC</Text>
                     </View>
@@ -522,12 +511,12 @@ const PointsScreen: React.FC = () => {
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
-                  {player.captain && (
+                  {player.is_captain && (
                     <View style={styles.captainBadge}>
                       <Text style={styles.captainText}>C</Text>
                     </View>
                   )}
-                  {player.vice_captain && (
+                  {player.is_vice_captain && (
                     <View style={styles.viceCaptainBadge}>
                       <Text style={styles.viceCaptainText}>VC</Text>
                     </View>
@@ -570,12 +559,12 @@ const PointsScreen: React.FC = () => {
                 onPress={() => handlePlayerPress(player)}
               >
                 {/* Captain/Vice-Captain Badge */}
-                {player.captain && (
+                {player.is_captain && (
                   <View style={styles.captainBadge}>
                     <Text style={styles.captainText}>C</Text>
                   </View>
                 )}
-                {player.vice_captain && (
+                {player.is_vice_captain && (
                   <View style={styles.viceCaptainBadge}>
                     <Text style={styles.viceCaptainText}>VC</Text>
                   </View>
