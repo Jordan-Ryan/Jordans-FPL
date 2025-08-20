@@ -44,11 +44,43 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
       // Step 3: Generate expected points
       setProgress('Generating expected points (99.7% accuracy)...');
       setCurrentStep(3);
+      
+      console.log('🔮 Starting expected points generation...');
+      console.log('📊 Players data length:', playersData.length);
+      console.log('📊 Teams data length:', teamsData.length);
+      
       const predictions = await predictor.predictAllPlayers(fplApiService);
+      
+      console.log('✅ Expected points generation completed!');
+      console.log('📊 Predictions generated:', predictions.length);
+      
+      if (predictions.length > 0) {
+        console.log('📊 Sample predictions:');
+        predictions.slice(0, 5).forEach((pred, index) => {
+          console.log(`  ${index + 1}. ${pred.name} (${pred.position}): GW2: ${pred.gw2_xp}, GW3: ${pred.gw3_xp}, GW4: ${pred.gw4_xp}, Total: ${pred.total_3gw_xp}`);
+        });
+        
+        // Check for zero XP values
+        const zeroXPCount = predictions.filter(p => p.total_3gw_xp === 0).length;
+        console.log(`⚠️ Players with 0 XP: ${zeroXPCount}/${predictions.length}`);
+        
+        if (zeroXPCount > 0) {
+          console.log('⚠️ Sample players with 0 XP:');
+          predictions.filter(p => p.total_3gw_xp === 0).slice(0, 5).forEach((pred, index) => {
+            console.log(`  ${index + 1}. ${pred.name} (${pred.position}): GW2: ${pred.gw2_xp}, GW3: ${pred.gw3_xp}, GW4: ${pred.gw4_xp}`);
+          });
+        }
+      } else {
+        console.log('❌ No predictions generated!');
+      }
 
       // Step 4: Generate Best 11 teams
       setProgress('Optimizing Best 11 teams...');
       setCurrentStep(4);
+      
+      console.log('🎯 Starting Best 11 generation...');
+      console.log('📊 Using predictions:', predictions.length);
+      
       const optimizer = new Best11Optimizer();
       
       // Add timeout protection for optimization
@@ -58,9 +90,22 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
         }, 15000); // 15 second timeout
         
         try {
+          console.log('🔧 Calling generateAllOptimalTeams...');
           const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
+          console.log('✅ Best 11 generation completed!');
+          console.log('📊 Optimal teams generated:', optimalTeams ? Object.keys(optimalTeams).length : 0);
+          
+          if (optimalTeams) {
+            Object.entries(optimalTeams).forEach(([gw, team]) => {
+              if (team) {
+                console.log(`  ${gw}: ${team.formation}, ${team.total_expected_points} XP, £${team.total_cost}m, ${team.starting_xi?.length || 0} players`);
+              }
+            });
+          }
+          
           resolve(optimalTeams);
         } catch (err) {
+          console.error('❌ Best 11 generation failed:', err);
           reject(err);
         }
       });
@@ -81,6 +126,15 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
         best11Teams: best11Teams,
         timestamp: Date.now(),
       };
+
+      console.log('💾 Caching app data in context...');
+      console.log('📊 Final data summary:');
+      console.log(`  - FPL Players: ${appData.fplPlayers.length}`);
+      console.log(`  - Teams: ${appData.teams.length}`);
+      console.log(`  - Fixtures: ${appData.fixtures.length}`);
+      console.log(`  - Player Predictions: ${appData.playerPredictions.length}`);
+      console.log(`  - Best 11 Teams: ${appData.best11Teams ? Object.keys(appData.best11Teams).length : 0}`);
+      console.log(`  - Timestamp: ${new Date(appData.timestamp).toISOString()}`);
 
       setCachedData(appData);
 
