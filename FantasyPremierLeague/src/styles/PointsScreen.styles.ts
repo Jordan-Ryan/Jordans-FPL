@@ -17,6 +17,18 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: theme.spacing.md,
+  },
+
+  headerLeft: {
+    flex: 1,
+    marginRight: theme.spacing.md,
+  },
   
   headerTitle: {
     fontSize: theme.typography.xxxxl,
@@ -28,7 +40,38 @@ export const styles = StyleSheet.create({
   deadlineText: {
     fontSize: theme.typography.lg,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.lg,
+    marginBottom: 0,
+  },
+
+  // Gameweek Selector Styles
+  gameweekSelector: {
+    marginTop: theme.spacing.md,
+  },
+
+  gameweekLabel: {
+    fontSize: theme.typography.md,
+    fontWeight: '600',
+    marginBottom: theme.spacing.sm,
+  },
+
+  gameweekScroll: {
+    flexDirection: 'row',
+  },
+
+  gameweekButton: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.background,
+    marginRight: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+
+  gameweekButtonText: {
+    fontSize: theme.typography.md,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
   },
   
   content: {

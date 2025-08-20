@@ -268,25 +268,61 @@ const PointsScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {loading ? 'Loading...' : currentGameweek.name}
-        </Text>
-        <Text style={styles.deadlineText}>
-          {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
-        </Text>
-        
-        {/* Fetch Squad Data Button */}
-        <TouchableOpacity
-          style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => setShowSquadModal(true)}
-        >
-          <Text style={styles.fetchButtonText}>
-            {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerTop}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>
+              {loading ? 'Loading...' : currentGameweek.name}
+            </Text>
+            <Text style={styles.deadlineText}>
+              {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
+            </Text>
+          </View>
+          
+          {/* Fetch Squad Data Button - Right side */}
+          <TouchableOpacity
+            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => setShowSquadModal(true)}
+          >
+            <Text style={styles.fetchButtonText}>
+              {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Gameweek Selector */}
+        {squadDataFetched && (
+          <View style={styles.gameweekSelector}>
+            <Text style={[styles.gameweekLabel, { color: theme.colors.textSecondary }]}>
+              Select Gameweek:
+            </Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.gameweekScroll}
+            >
+              {Array.from({ length: currentGameweek.id }, (_, i) => i + 1).map((gw) => (
+                <TouchableOpacity
+                  key={gw}
+                  style={[
+                    styles.gameweekButton,
+                    selectedGameweek === gw && { backgroundColor: theme.colors.primary }
+                  ]}
+                  onPress={() => setSelectedGameweek(gw)}
+                >
+                  <Text style={[
+                    styles.gameweekButtonText,
+                    selectedGameweek === gw && { color: theme.colors.surface }
+                  ]}>
+                    GW{gw}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
-      {/* Squad Data Modal */}
+      {/* Squad Data Modal - Simplified to only Squad ID */}
       <Modal
         visible={showSquadModal}
         transparent={true}
@@ -311,22 +347,6 @@ const PointsScreen: React.FC = () => {
               value={squadId}
               onChangeText={setSquadId}
               placeholder="Enter your Squad ID (e.g., 397418)"
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
-            />
-            
-            <Text style={[styles.modalLabel, { color: theme.colors.textSecondary }]}>
-              Gameweek:
-            </Text>
-            <TextInput
-              style={[styles.modalInput, { 
-                backgroundColor: theme.colors.background,
-                color: theme.colors.text,
-                borderColor: theme.colors.textSecondary 
-              }]}
-              value={selectedGameweek.toString()}
-              onChangeText={(text) => setSelectedGameweek(parseInt(text) || 1)}
-              placeholder="Enter gameweek number"
               placeholderTextColor={theme.colors.textSecondary}
               keyboardType="numeric"
             />
