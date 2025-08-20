@@ -10,77 +10,89 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '../context/ThemeContext';
-import { useExpectedPoints } from '../hooks/useExpectedPoints';
+import { useData } from '../context/DataContext';
 import { fplApiService } from '../services/fplApi';
 import PlayerPhoto from '../components/PlayerPhoto';
 import { styles } from '../styles/Best11Screen.styles';
 
 const Best11Screen: React.FC = () => {
   const theme = useTheme();
+  const { cachedData, isDataLoaded } = useData();
   const { width } = Dimensions.get('window');
   
   const [currentGameweek, setCurrentGameweek] = useState(2);
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Expected Points hook
-  const { 
-    playerPredictions, 
-    best11Teams, 
-    loading: xpLoading, 
-    error: xpError, 
-    progress: xpProgress 
-  } = useExpectedPoints(fplApiService);
-
   useEffect(() => {
-    const fetchTeams = async () => {
-      try {
-        const teamsData = await fplApiService.fetchAllTeams();
-        setTeams(teamsData);
-      } catch (error) {
-        console.error('Error fetching teams:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (cachedData && isDataLoaded) {
+      console.log('📦 Using cached data for Best 11 screen');
+      setTeams(cachedData.teams);
+      setLoading(false);
+    } else if (!isDataLoaded) {
+      console.log('⏳ Data still loading...');
+    } else {
+      // Fallback: fetch teams if no cache
+      console.log('⚠️ No cached data, fetching teams from API');
+      fetchTeams();
+    }
+  }, [cachedData, isDataLoaded]);
 
-    fetchTeams();
-  }, []);
+  const fetchTeams = async () => {
+    try {
+      setLoading(true);
+      const teamsData = await fplApiService.fetchAllTeams();
+      setTeams(teamsData);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (loading || xpLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>
-            {xpLoading ? xpProgress : 'Loading teams...'}
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (xpError) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Error: {xpError}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!best11Teams || !playerPredictions.length) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading optimal teams...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const currentTeam = best11Teams[`gw${currentGameweek}` as keyof typeof best11Teams];
+  // Get current team data
+  const currentTeam = cachedData?.best11Teams?.[`gw${currentGameweek}` as keyof typeof cachedData.best11Teams];
   const gameweekOptions = [2, 3, 4];
+
+  if (!isDataLoaded) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading app data...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!cachedData?.best11Teams) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>No Best 11 data available. Please restart the app.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading teams...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!currentTeam) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>No team data for GW{currentGameweek}</Text>
+        </View>
+      </View>
+    );
+  }
 
   const getTeamById = (teamId: number) => {
     const team = teams.find(t => t.id === teamId);

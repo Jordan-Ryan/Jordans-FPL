@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   TextInput,
+  Modal,
+  Alert,
   Dimensions,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { FPLPlayer, FPLTeam } from '../types';
 import { fplApiService } from '../services/fplApi';
 import { styles } from '../styles/PlayersScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
-import { useExpectedPoints } from '../hooks/useExpectedPoints';
-import { PlayerPrediction } from '../services/fplPredictor2025-26';
 
 interface SortConfig {
   key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gw2_xp' | 'gw3_xp' | 'gw4_xp' | 'total_3gw_xp';
@@ -33,6 +34,7 @@ interface FilterConfig {
 
 const PlayersScreen: React.FC = () => {
   const theme = useTheme();
+  const { cachedData, isDataLoaded } = useData();
   const { width } = Dimensions.get('window');
   
   const [players, setPlayers] = useState<FPLPlayer[]>([]);
@@ -54,21 +56,31 @@ const PlayersScreen: React.FC = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
 
-  // Expected Points hook
-  const { 
-    playerPredictions, 
-    best11Teams, 
-    loading: xpLoading, 
-    error: xpError, 
-    progress: xpProgress 
-  } = useExpectedPoints(fplApiService);
+  // Use cached data when available
+  useEffect(() => {
+    if (cachedData && isDataLoaded) {
+      console.log('📦 Using cached data for Players screen');
+      setPlayers(cachedData.fplPlayers);
+      setTeams(cachedData.teams);
+      setFixtures(cachedData.fixtures);
+      setCurrentGameweek(cachedData.currentGameweek.id);
+      setLastGameweek(cachedData.currentGameweek.id);
+      setLoading(false);
+    } else if (!isDataLoaded) {
+      console.log('⏳ Data still loading...');
+    } else {
+      // Fallback: fetch data if no cache
+      console.log('⚠️ No cached data, fetching from API');
+      fetchData();
+    }
+  }, [cachedData, isDataLoaded]);
 
-  // Merge expected points data with players
+  // Merge expected points data with players from cache
   const playersWithXP = useMemo(() => {
-    if (!playerPredictions.length || !players.length) return players;
+    if (!cachedData?.playerPredictions?.length || !players.length) return players;
     
     return players.map(player => {
-      const prediction = playerPredictions.find(p => p.player_id === player.id);
+      const prediction = cachedData.playerPredictions.find((p: any) => p.player_id === player.id);
       if (prediction) {
         return {
           ...player,
@@ -80,7 +92,7 @@ const PlayersScreen: React.FC = () => {
       }
       return player;
     });
-  }, [players, playerPredictions]);
+  }, [players, cachedData?.playerPredictions]);
 
   // Price options from £4.0m to £14.5m in £0.5m increments
   const priceOptions = useMemo<(string | number)[]>(() => {
@@ -92,31 +104,27 @@ const PlayersScreen: React.FC = () => {
     return ['Unlimited', ...values];
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [playersData, teamsData, gameweekData, fixturesData] = await Promise.all([
-          fplApiService.fetchAllPlayers(),
-          fplApiService.fetchAllTeams(),
-          fplApiService.getCurrentGameweek(),
-          fplApiService.fetchFixturesData(),
-        ]);
-        
-        setPlayers(playersData);
-        setTeams(teamsData);
-        setCurrentGameweek(gameweekData.id);
-        setLastGameweek(Math.max(1, gameweekData.id - 1));
-        setFixtures(fixturesData);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [playersData, teamsData, gameweekData, fixturesData] = await Promise.all([
+        fplApiService.fetchAllPlayers(),
+        fplApiService.fetchAllTeams(),
+        fplApiService.getCurrentGameweek(),
+        fplApiService.fetchFixturesData(),
+      ]);
+      
+      setPlayers(playersData);
+      setTeams(teamsData);
+      setCurrentGameweek(gameweekData.id);
+      setLastGameweek(Math.max(1, gameweekData.id - 1));
+      setFixtures(fixturesData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Get team by ID
   const getTeamById = (teamId: number): FPLTeam | undefined => {
@@ -540,14 +548,14 @@ const PlayersScreen: React.FC = () => {
       </View>
 
       {/* Best 11 Section */}
-      {best11Teams && (
+      {cachedData?.best11Teams && (
         <View style={[styles.best11Section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.textSecondary }]}>
           <Text style={[styles.best11Title, { color: theme.colors.text }]}>
             🏆 Best 11 Teams (99.7% Accuracy)
           </Text>
           <View style={styles.best11Grid}>
             {[2, 3, 4].map(gw => {
-              const team = best11Teams[`gw${gw}` as keyof typeof best11Teams];
+              const team = cachedData.best11Teams[`gw${gw}` as keyof typeof cachedData.best11Teams];
               if (!team) return null;
               
               return (

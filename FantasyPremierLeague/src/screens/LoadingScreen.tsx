@@ -1,24 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { fplApiService } from '../services/fplApi';
 import { FPLPredictor2025_26 } from '../services/fplPredictor2025-26';
 import { Best11Optimizer } from '../services/best11Optimizer';
-import { appCache } from '../services/appCache';
 
 interface LoadingScreenProps {
-  onComplete: (data: {
-    fplPlayers: any[];
-    teams: any[];
-    fixtures: any[];
-    currentGameweek: any;
-    playerPredictions: any[];
-    best11Teams: any;
-  }) => void;
+  onComplete: () => void;
 }
 
 export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
   const theme = useTheme();
+  const { setCachedData } = useData();
   const [progress, setProgress] = useState('Initializing...');
   const [currentStep, setCurrentStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(6);
@@ -77,7 +71,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
       setProgress('Finalizing...');
       setCurrentStep(5);
 
-      // Cache the results
+      // Cache the results in context
       const appData = {
         fplPlayers: playersData,
         teams: teamsData,
@@ -85,17 +79,17 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
         currentGameweek: gameweek,
         playerPredictions: predictions,
         best11Teams: best11Teams,
+        timestamp: Date.now(),
       };
 
-      // Store in cache
-      appCache.setCache(appData);
+      setCachedData(appData);
 
       setProgress('Complete!');
       setCurrentStep(6);
 
       // Small delay to show completion
       setTimeout(() => {
-        onComplete(appData);
+        onComplete();
       }, 500);
 
     } catch (error) {
@@ -118,10 +112,11 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           currentGameweek: gameweek,
           playerPredictions: [],
           best11Teams: null,
+          timestamp: Date.now(),
         };
 
-        appCache.setCache(fallbackData);
-        onComplete(fallbackData);
+        setCachedData(fallbackData);
+        onComplete();
       } catch (fallbackError) {
         console.error('❌ Fallback also failed:', fallbackError);
         // Show error state

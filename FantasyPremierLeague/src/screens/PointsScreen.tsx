@@ -12,39 +12,23 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { FPLPlayer, FPLTeam } from '../types';
 import { fplApiService } from '../services/fplApi';
 import SquadManager from '../components/SquadManager';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
 import { styles } from '../styles/PointsScreen.styles';
-import { useRoute, RouteProp } from '@react-navigation/native';
-
-type PointsScreenParams = {
-  Points: {
-    cachedData?: {
-      fplPlayers: FPLPlayer[];
-      teams: FPLTeam[];
-      fixtures: any[];
-      currentGameweek: { id: number; name: string; deadline: string };
-      playerPredictions: any[];
-      best11Teams: any;
-    };
-  };
-};
 
 const PointsScreen: React.FC = () => {
   const theme = useTheme();
-  const route = useRoute<RouteProp<PointsScreenParams>>();
+  const { cachedData, isDataLoaded } = useData();
   const { width } = Dimensions.get('window');
-  
-  // Get cached data from navigation params
-  const cachedData = route.params?.cachedData;
   
   // State for FPL data
   const [fplPlayers, setFplPlayers] = useState<FPLPlayer[]>([]);
   const [teams, setTeams] = useState<FPLTeam[]>([]);
-  const [loading, setLoading] = useState(false); // Start as false since we have cached data
+  const [loading, setLoading] = useState(false);
   const [showSquadManager, setShowSquadManager] = useState(false);
   const [currentGameweek, setCurrentGameweek] = useState<{ id: number; name: string; deadline: string }>({ id: 1, name: 'Gameweek 1', deadline: 'TBD' });
   const [fixtures, setFixtures] = useState<any[]>([]);
@@ -92,7 +76,7 @@ const PointsScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    if (cachedData) {
+    if (cachedData && isDataLoaded) {
       // Use cached data
       console.log('📦 Using cached data for Points screen');
       setFplPlayers(cachedData.fplPlayers);
@@ -100,12 +84,15 @@ const PointsScreen: React.FC = () => {
       setFixtures(cachedData.fixtures);
       setCurrentGameweek(cachedData.currentGameweek);
       setSelectedGameweek(cachedData.currentGameweek.id);
+    } else if (!isDataLoaded) {
+      // Still loading
+      console.log('⏳ Data still loading...');
     } else {
       // Fallback: fetch data if no cache
       console.log('⚠️ No cached data, fetching from API');
       fetchData();
     }
-  }, [cachedData]);
+  }, [cachedData, isDataLoaded]);
 
   // Fetch squad data from FPL API
   const fetchSquadData = async (gameweek: number = selectedGameweek) => {
