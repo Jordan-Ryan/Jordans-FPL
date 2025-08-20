@@ -26,13 +26,7 @@ export function useExpectedPoints(fplApiService: any) {
         setLoading(true);
         setError(null);
 
-        // Step 1: Initialize predictor (downloads 2024-25 baseline)
-        setProgress('Downloading 2024-25 baseline data...');
-        await predictor.initialize();
-
-        if (cancelled) return;
-
-        // Step 2: Generate predictions for all players
+        // Step 1: Generate predictions for all players
         setProgress('Generating expected points (99.7% accuracy)...');
         console.log('🔮 Starting predictions with API service:', fplApiService);
         
@@ -46,7 +40,7 @@ export function useExpectedPoints(fplApiService: any) {
 
         setPlayerPredictions(predictions);
 
-        // Step 3: Optimize best 11 teams
+        // Step 2: Optimize best 11 teams
         setProgress('Optimizing best 11 teams...');
         const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
         setBest11Teams(optimalTeams);
@@ -79,10 +73,18 @@ export function useExpectedPoints(fplApiService: any) {
   const refresh = async () => {
     setLoading(true);
     setError(null);
-    // Force refresh by re-initializing
-    await predictor.initialize();
-    // Note: window.location.reload() is not available in React Native
-    // The component will re-render when state changes
+    // Force refresh by regenerating predictions
+    try {
+      const predictions = await predictor.predictAllPlayers(fplApiService);
+      setPlayerPredictions(predictions);
+      const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
+      setBest11Teams(optimalTeams);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh expected points';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {

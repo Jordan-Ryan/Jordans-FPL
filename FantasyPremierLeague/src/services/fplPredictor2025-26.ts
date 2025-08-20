@@ -1,27 +1,36 @@
-import modelData from '../models/fplModel2025-26.json';
-import { Data2024_25Downloader, PlayerSeasonData } from '../../scripts/download2024-25Data';
+import baselineData2024_25 from '../data/2024-25-baseline-processed.json';
+
+interface PlayerSeasonData {
+  name: string;
+  element_type: number;
+  team: string;
+  season_history: Array<{
+    round: number;
+    total_points: number;
+    minutes: number;
+    was_home: boolean;
+    opponent_team: string;
+    ict_index: number;
+    bps: number;
+    expected_goal_involvements: number;
+  }>;
+}
 
 export interface PlayerPrediction {
   player_id: number;
   name: string;
   team: string;
-  position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  position: string;
   price: number;
   gw2_xp: number;
   gw3_xp: number;
   gw4_xp: number;
   total_3gw_xp: number;
-  fixtures: Array<{
-    gameweek: number;
-    opponent: string;
-    home_away: 'H' | 'A';
-    difficulty?: number;
-    expected_points: number;
-  }>;
-  [key: string]: any; // Allow string indexing for xp fields
+  fixtures: any[];
+  [key: string]: any;
 }
 
-interface RollingFeatures {
+export interface RollingFeatures {
   roll3_points: number;
   roll5_points: number;
   roll8_points: number;
@@ -40,23 +49,28 @@ interface RollingFeatures {
 }
 
 export class FPLPredictor2025_26 {
-  private model = modelData;
-  private dataDownloader = new Data2024_25Downloader();
+  private model: any;
   private baselineData: Record<string, PlayerSeasonData> | null = null;
 
+  constructor() {
+    this.model = require('../models/fplModel2025-26.json');
+    // Load baseline data directly from static file
+    this.baselineData = baselineData2024_25 as Record<string, PlayerSeasonData>;
+    console.log('✅ FPL Predictor 2025-26 initialized with static baseline data');
+  }
+
   async initialize(): Promise<void> {
-    if (!this.baselineData) {
-      console.log('🔄 Initializing FPL Predictor 2025-26...');
-      this.baselineData = await this.dataDownloader.getBaselineData();
-      console.log('✅ Predictor initialized with 2024-25 baseline');
-    }
+    // No need to initialize - data is already loaded
+    console.log('✅ Predictor already initialized with static baseline data');
+  }
+
+  isInitialized(): boolean {
+    return this.baselineData !== null;
   }
 
   private calculateRollingFeatures(playerName: string, currentSeasonHistory: any[]): RollingFeatures {
-    const baselineHistory = this.dataDownloader.findPlayerBaseline(
-      playerName,
-      this.baselineData || {}
-    );
+    const baselineData = this.findPlayerBaseline(playerName);
+    const baselineHistory = baselineData?.season_history || [];
 
     let combinedHistory: any[] = [];
 
@@ -115,6 +129,42 @@ export class FPLPredictor2025_26 {
       data_quality: combinedHistory.length >= 10 ? 'good' : combinedHistory.length >= 5 ? 'limited' : 'minimal',
       history_games: combinedHistory.length
     };
+  }
+
+  private findPlayerBaseline(playerName: string): PlayerSeasonData | null {
+    // Try exact match first
+    if (this.baselineData?.[playerName]) {
+      return this.baselineData[playerName];
+    }
+
+    // Try normalized name (remove accents, lowercase)
+    const normalizedName = playerName
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, '');
+
+    for (const [name, data] of Object.entries(this.baselineData || {})) {
+      const normalizedBaselineName = name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, '');
+
+      if (normalizedName === normalizedBaselineName) {
+        return data;
+      }
+    }
+
+    // Try partial match
+    for (const [name, data] of Object.entries(this.baselineData || {})) {
+      if (name.toLowerCase().includes(playerName.toLowerCase()) || 
+          playerName.toLowerCase().includes(name.toLowerCase())) {
+        return data;
+      }
+    }
+
+    return null;
   }
 
   private getNewPlayerDefaults(): RollingFeatures {
