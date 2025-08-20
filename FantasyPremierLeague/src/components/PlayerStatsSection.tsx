@@ -649,7 +649,7 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
                             <View style={styles.pointItem}>
                               <Text style={[styles.pointLabel, { color: theme.colors.textSecondary }]}>Defensive Contributions</Text>
                               <Text style={[styles.pointValue, { color: theme.colors.text }]}>
-                                {selectedMatch.defensive_contributions || 'N/A'}
+                                {selectedMatch.defensive_contributions || 'N/A'} actions
                               </Text>
                               <Text style={[styles.pointPoints, { color: theme.colors.primary }]}>
                                 {pointsBreakdown.defensive_contributions_points} pts

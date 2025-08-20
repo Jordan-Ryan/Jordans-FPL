@@ -184,9 +184,19 @@ export class FPLPointsCalculator {
     // Defensive contributions points
     let defensive_contributions_points = 0;
     
-    // Use the API's defensive_contributions field if available
-    if (stats.defensive_contributions !== undefined && stats.defensive_contributions > 0) {
-      defensive_contributions_points = stats.defensive_contributions;
+    // Use the API's defensive_contributions field as the count of actions
+    if (stats.defensive_contributions !== undefined) {
+      const defensiveActions = stats.defensive_contributions;
+      
+      if (position === 2) { // Defender
+        if (defensiveActions >= this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.DEF.threshold) {
+          defensive_contributions_points = this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.DEF.points;
+        }
+      } else if (position === 3 || position === 4) { // Midfielder or Forward
+        if (defensiveActions >= this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.MID_FWD.threshold) {
+          defensive_contributions_points = this.SCORING_RULES.DEFENSIVE_CONTRIBUTIONS.MID_FWD.points;
+        }
+      }
     } else if (stats.clearances_blocks_interceptions !== undefined && stats.recoveries !== undefined && stats.tackles !== undefined) {
       // Fallback to calculation if API field not available
       const totalDefensiveActions = stats.clearances_blocks_interceptions + stats.recoveries + stats.tackles;
