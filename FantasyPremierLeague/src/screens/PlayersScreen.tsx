@@ -13,14 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { FPLPlayer, FPLTeam } from '../types';
 import { fplApiService } from '../services/fplApi';
-import { ExpectedPointsApiService } from '../services/expectedPointsApi';
 import { styles } from '../styles/PlayersScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
 
 interface SortConfig {
-  key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gw2Xp' | 'gw3Xp' | 'gw4Xp' | 'threeGwXp';
+  key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3';
   direction: 'asc' | 'desc';
 }
 
@@ -37,8 +36,6 @@ const PlayersScreen: React.FC = () => {
   const [players, setPlayers] = useState<FPLPlayer[]>([]);
   const [teams, setTeams] = useState<FPLTeam[]>([]);
   const [loading, setLoading] = useState(true);
-  const [xpLoading, setXpLoading] = useState(false);
-  const [xpError, setXpError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'form', direction: 'desc' });
   const [filterConfig, setFilterConfig] = useState<FilterConfig>({
@@ -76,40 +73,7 @@ const PlayersScreen: React.FC = () => {
           fplApiService.fetchFixturesData(),
         ]);
         
-        // Get player IDs for expected points calculation
-        const playerIds = playersData.slice(0, 100).map(p => p.id); // Limit to first 100 players for performance
-        
-        // Fetch expected points from the new API
-        let playersWithXp = playersData;
-        setXpLoading(true);
-        setXpError(null);
-        
-        try {
-          const expectedPointsData = await ExpectedPointsApiService.getBatchExpectedPoints(playerIds, 3);
-          
-          // Merge expected points data with player data
-          playersWithXp = playersData.map(player => {
-            const xpData = expectedPointsData.find(xp => xp.player_id === player.id);
-            if (xpData) {
-              return {
-                ...player,
-                gw2Xp: xpData.predictions.find(p => p.gameweek === gameweekData.id + 1)?.expected_points || 0,
-                gw3Xp: xpData.predictions.find(p => p.gameweek === gameweekData.id + 2)?.expected_points || 0,
-                gw4Xp: xpData.predictions.find(p => p.gameweek === gameweekData.id + 3)?.expected_points || 0,
-                threeGwXp: xpData.total_3gw || 0
-              };
-            }
-            return player;
-          });
-        } catch (error) {
-          console.error('Failed to fetch expected points:', error);
-          setXpError('Failed to load expected points. Using basic player data.');
-          // Fallback to original player data without XP
-        } finally {
-          setXpLoading(false);
-        }
-        
-        setPlayers(playersWithXp);
+        setPlayers(playersData);
         setTeams(teamsData);
         setCurrentGameweek(gameweekData.id);
         setLastGameweek(Math.max(1, gameweekData.id - 1));
@@ -248,22 +212,6 @@ const PlayersScreen: React.FC = () => {
             aValue = difficultyMap[aFixture.difficulty] || 2;
             bValue = difficultyMap[bFixture.difficulty] || 2;
           }
-          break;
-        case 'gw2Xp':
-          aValue = a.gw2Xp || 0;
-          bValue = b.gw2Xp || 0;
-          break;
-        case 'gw3Xp':
-          aValue = a.gw3Xp || 0;
-          bValue = b.gw3Xp || 0;
-          break;
-        case 'gw4Xp':
-          aValue = a.gw4Xp || 0;
-          bValue = b.gw4Xp || 0;
-          break;
-        case 'threeGwXp':
-          aValue = a.threeGwXp || 0;
-          bValue = b.threeGwXp || 0;
           break;
         default:
           aValue = 0;
@@ -470,45 +418,7 @@ const PlayersScreen: React.FC = () => {
           <Text style={styles.chevronIcon}>▼</Text>
         </TouchableOpacity>
 
-        {/* Refresh Expected Points Button */}
-        <TouchableOpacity
-          style={[styles.filterButton, { borderColor: theme.colors.textSecondary }]}
-          onPress={async () => {
-            if (!xpLoading) {
-              setXpLoading(true);
-              setXpError(null);
-              try {
-                const playerIds = players.slice(0, 100).map(p => p.id);
-                const expectedPointsData = await ExpectedPointsApiService.getBatchExpectedPoints(playerIds, 3);
-                
-                const updatedPlayers = players.map(player => {
-                  const xpData = expectedPointsData.find(xp => xp.player_id === player.id);
-                  if (xpData) {
-                    return {
-                      ...player,
-                      gw2Xp: xpData.predictions.find(p => p.gameweek === currentGameweek + 1)?.expected_points || 0,
-                      gw3Xp: xpData.predictions.find(p => p.gameweek === currentGameweek + 2)?.expected_points || 0,
-                      gw4Xp: xpData.predictions.find(p => p.gameweek === currentGameweek + 3)?.expected_points || 0,
-                      threeGwXp: xpData.total_3gw || 0
-                    };
-                  }
-                  return player;
-                });
-                
-                setPlayers(updatedPlayers);
-              } catch (error) {
-                console.error('Failed to refresh expected points:', error);
-                setXpError('Failed to refresh expected points');
-              } finally {
-                setXpLoading(false);
-              }
-            }
-          }}
-        >
-          <Text style={[styles.filterButtonText, { color: theme.colors.text }]}>
-            {xpLoading ? '🔄' : '🔄'} XP
-          </Text>
-        </TouchableOpacity>
+        
       </View>
 
       {/* Position Filter Dropdown */}
@@ -530,22 +440,7 @@ const PlayersScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Expected Points Status */}
-      <View style={[styles.xpStatusContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.textSecondary }]}>
-        {xpLoading ? (
-          <Text style={[styles.xpStatusText, { color: theme.colors.textSecondary }]}>
-            🔄 Loading Expected Points...
-          </Text>
-        ) : xpError ? (
-          <Text style={[styles.xpStatusText, { color: '#EF4444' }]}>
-            ⚠️ {xpError}
-          </Text>
-        ) : (
-          <Text style={[styles.xpStatusText, { color: '#10B981' }]}>
-            ✅ Expected Points Loaded
-          </Text>
-        )}
-      </View>
+      
 
       {/* Club Filter Dropdown */}
       {showClubFilter && (
@@ -628,15 +523,7 @@ const PlayersScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
             
-            {/* 3GW XP Header - Moved next to player info */}
-            <TouchableOpacity
-              style={styles.headerCell}
-              onPress={() => handleSort('threeGwXp')}
-            >
-              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                3GW XP {getSortIndicator('threeGwXp')}
-              </Text>
-            </TouchableOpacity>
+
             
             <TouchableOpacity
               style={styles.headerCell}
@@ -746,33 +633,7 @@ const PlayersScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
             
-            {/* Expected Points Columns */}
-            <TouchableOpacity
-              style={styles.headerCell}
-              onPress={() => handleSort('gw2Xp')}
-            >
-              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 1} XP {getSortIndicator('gw2Xp')}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.headerCell}
-              onPress={() => handleSort('gw3Xp')}
-            >
-              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 2} XP {getSortIndicator('gw3Xp')}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.headerCell}
-              onPress={() => handleSort('gw4Xp')}
-            >
-              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 3} XP {getSortIndicator('gw4Xp')}
-              </Text>
-            </TouchableOpacity>
+
             
           </View>
 
@@ -815,12 +676,7 @@ const PlayersScreen: React.FC = () => {
                   )}
                 </View>
                 
-                {/* 3GW Expected Points - Moved next to player info */}
-                <View style={styles.statCell}>
-                  <Text style={[styles.statText, { color: theme.colors.text, fontWeight: '600' }]}> 
-                    {player.threeGwXp ? player.threeGwXp.toFixed(1) : '-'}
-                  </Text>
-                </View>
+
                 
                 {/* Form */}
                 <View style={styles.statCell}>
@@ -945,26 +801,7 @@ const PlayersScreen: React.FC = () => {
                   })()}
                 </View>
                 
-                {/* GW+1 Expected Points */}
-                <View style={styles.statCell}>
-                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw2Xp ? player.gw2Xp.toFixed(1) : '-'}
-                  </Text>
-                </View>
-                
-                {/* GW+2 Expected Points */}
-                <View style={styles.statCell}>
-                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw3Xp ? player.gw3Xp.toFixed(1) : '-'}
-                  </Text>
-                </View>
-                
-                {/* GW+3 Expected Points */}
-                <View style={styles.statCell}>
-                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw4Xp ? player.gw4Xp.toFixed(1) : '-'}
-                  </Text>
-                </View>
+
               </TouchableOpacity>
             ))}
             
