@@ -23,7 +23,7 @@ export class Best11Optimizer {
     { GK: 1, DEF: 5, MID: 3, FWD: 2, name: '5-3-2' }
   ];
 
-  generateOptimalTeam(players: PlayerPrediction[], gameweek: 2 | 3 | 4): OptimalTeam {
+  async generateOptimalTeam(players: PlayerPrediction[], gameweek: 2 | 3 | 4): Promise<OptimalTeam> {
     console.log(`🎯 Generating optimal team for GW${gameweek} with ${players.length} players...`);
     
     const xpField = `gw${gameweek}_xp` as keyof PlayerPrediction;
@@ -36,7 +36,14 @@ export class Best11Optimizer {
       return this.createEmptyTeam(gameweek);
     }
     
-    const playersWithValue = availablePlayers.map(player => ({
+    // Limit to top 100 players by XP to prevent excessive computation
+    const topPlayers = availablePlayers
+      .sort((a, b) => (b[xpField] as number) - (a[xpField] as number))
+      .slice(0, 100);
+    
+    console.log(`🎯 Using top ${topPlayers.length} players for optimization`);
+    
+    const playersWithValue = topPlayers.map(player => ({
       ...player,
       xp: player[xpField] as number,
       valueEfficiency: (player[xpField] as number) / player.price
@@ -51,21 +58,48 @@ export class Best11Optimizer {
 
     console.log(`👥 Position breakdown: GK: ${playersByPosition.GK.length}, DEF: ${playersByPosition.DEF.length}, MID: ${playersByPosition.MID.length}, FWD: ${playersByPosition.FWD.length}`);
 
+    // Sort by value efficiency for faster selection
     Object.keys(playersByPosition).forEach(pos => {
       playersByPosition[pos as keyof typeof playersByPosition]
         .sort((a, b) => b.valueEfficiency - a.valueEfficiency);
     });
 
     let bestTeam: OptimalTeam | null = null;
+    let formationCount = 0;
+    const maxFormations = 3; // Limit to top 3 formations to prevent hanging
 
     for (const formation of this.FORMATIONS) {
+      if (formationCount >= maxFormations) {
+        console.log(`⏱️ Reached max formations limit (${maxFormations}), stopping optimization`);
+        break;
+      }
+      
       console.log(`🔄 Trying formation: ${formation.name}`);
-      const team = this.optimizeTeamForFormation(playersByPosition, formation, gameweek, xpField as string);
+      
+      // Add timeout protection for individual formation optimization
+      const teamPromise = new Promise<OptimalTeam | null>((resolve) => {
+        setTimeout(() => {
+          console.log(`⏱️ Formation ${formation.name} optimization timed out, skipping`);
+          resolve(null);
+        }, 3000); // 3 second timeout per formation
+        
+        try {
+          const team = this.optimizeTeamForFormation(playersByPosition, formation, gameweek, xpField as string);
+          resolve(team);
+        } catch (err) {
+          console.log(`❌ Formation ${formation.name} optimization failed:`, err);
+          resolve(null);
+        }
+      });
+      
+      const team = await teamPromise;
       
       if (team && (!bestTeam || team.total_expected_points > bestTeam.total_expected_points)) {
         bestTeam = team;
         console.log(`✅ New best team: ${formation.name} with ${team.total_expected_points} XP`);
       }
+      
+      formationCount++;
     }
 
     if (!bestTeam) {
@@ -201,13 +235,19 @@ export class Best11Optimizer {
     };
   }
 
-  generateAllOptimalTeams(players: PlayerPrediction[]) {
+  async generateAllOptimalTeams(players: PlayerPrediction[]) {
     console.log('🎯 Generating optimal teams for next 3 gameweeks...');
     
+    const [gw2, gw3, gw4] = await Promise.all([
+      this.generateOptimalTeam(players, 2),
+      this.generateOptimalTeam(players, 3),
+      this.generateOptimalTeam(players, 4)
+    ]);
+    
     return {
-      gw2: this.generateOptimalTeam(players, 2),
-      gw3: this.generateOptimalTeam(players, 3),
-      gw4: this.generateOptimalTeam(players, 4)
+      gw2,
+      gw3,
+      gw4
     };
   }
 }

@@ -18,15 +18,33 @@ import SquadManager from '../components/SquadManager';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
 import { styles } from '../styles/PointsScreen.styles';
+import { useRoute, RouteProp } from '@react-navigation/native';
+
+type PointsScreenParams = {
+  Points: {
+    cachedData?: {
+      fplPlayers: FPLPlayer[];
+      teams: FPLTeam[];
+      fixtures: any[];
+      currentGameweek: { id: number; name: string; deadline: string };
+      playerPredictions: any[];
+      best11Teams: any;
+    };
+  };
+};
 
 const PointsScreen: React.FC = () => {
   const theme = useTheme();
+  const route = useRoute<RouteProp<PointsScreenParams>>();
   const { width } = Dimensions.get('window');
+  
+  // Get cached data from navigation params
+  const cachedData = route.params?.cachedData;
   
   // State for FPL data
   const [fplPlayers, setFplPlayers] = useState<FPLPlayer[]>([]);
   const [teams, setTeams] = useState<FPLTeam[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false since we have cached data
   const [showSquadManager, setShowSquadManager] = useState(false);
   const [currentGameweek, setCurrentGameweek] = useState<{ id: number; name: string; deadline: string }>({ id: 1, name: 'Gameweek 1', deadline: 'TBD' });
   const [fixtures, setFixtures] = useState<any[]>([]);
@@ -47,48 +65,52 @@ const PointsScreen: React.FC = () => {
     gameweek: number;
   } | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch current gameweek and FPL data
-        const [gameweek, playersData, teamsData, fixturesData] = await Promise.all([
-          fplApiService.getCurrentGameweek(),
-          fplApiService.fetchAllPlayers(),
-          fplApiService.fetchAllTeams(),
-          fplApiService.fetchFixturesData(),
-        ]);
-        
-        setCurrentGameweek(gameweek);
-        setFplPlayers(playersData);
-        setTeams(teamsData);
-        setFixtures(fixturesData);
-        
-        // Auto-fetch squad data for the most recent gameweek
-        setSelectedGameweek(gameweek.id);
-        try {
-          await fetchSquadData(gameweek.id);
-        } catch (error) {
-          console.log('Auto-fetch failed, user will need to fetch manually:', error);
-          // Reset loading states to allow manual fetch
-          setSquadLoading(false);
-          setSquadDataFetched(false);
-        }
-        
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setLoading(false);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Fallback function to fetch data if no cache
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch current gameweek and FPL data
+      const [gameweek, playersData, teamsData, fixturesData] = await Promise.all([
+        fplApiService.getCurrentGameweek(),
+        fplApiService.fetchAllPlayers(),
+        fplApiService.fetchAllTeams(),
+        fplApiService.fetchFixturesData(),
+      ]);
+      
+      setCurrentGameweek(gameweek);
+      setFplPlayers(playersData);
+      setTeams(teamsData);
+      setFixtures(fixturesData);
+      setSelectedGameweek(gameweek.id);
+      
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchData();
-  }, []);
+  useEffect(() => {
+    if (cachedData) {
+      // Use cached data
+      console.log('📦 Using cached data for Points screen');
+      setFplPlayers(cachedData.fplPlayers);
+      setTeams(cachedData.teams);
+      setFixtures(cachedData.fixtures);
+      setCurrentGameweek(cachedData.currentGameweek);
+      setSelectedGameweek(cachedData.currentGameweek.id);
+    } else {
+      // Fallback: fetch data if no cache
+      console.log('⚠️ No cached data, fetching from API');
+      fetchData();
+    }
+  }, [cachedData]);
 
   // Fetch squad data from FPL API
   const fetchSquadData = async (gameweek: number = selectedGameweek) => {
+    console.log('🚀 fetchSquadData called with:', { gameweek, squadId, fplPlayersLength: fplPlayers.length });
+    
     if (!squadId.trim()) {
       Alert.alert('Error', 'Please enter a valid Squad ID');
       return;
@@ -96,6 +118,7 @@ const PointsScreen: React.FC = () => {
 
     setSquadLoading(true);
     try {
+      console.log('📡 Fetching squad data from FPL API...');
       // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
@@ -111,6 +134,11 @@ const PointsScreen: React.FC = () => {
       }
       
       const data = await response.json();
+      console.log('📊 FPL API response:', { 
+        picksCount: data.picks?.length, 
+        entryHistory: data.entry_history,
+        gameweek 
+      });
       
       if (data.picks && data.picks.length > 0) {
         // Convert FPL API data to FPLPlayer format for display
@@ -130,6 +158,12 @@ const PointsScreen: React.FC = () => {
           return fplPlayer;
         }).filter(Boolean);
         
+        console.log('✅ Converted players:', { 
+          convertedCount: convertedPlayers.length,
+          startingXICount: convertedPlayers.filter(p => p.is_starter).length,
+          benchCount: convertedPlayers.filter(p => !p.is_starter).length
+        });
+        
         setPlayers(convertedPlayers);
         setSquadDataFetched(true);
         setShowSquadModal(false);
@@ -140,18 +174,21 @@ const PointsScreen: React.FC = () => {
           gameweek: gameweek
         });
         
+        console.log('🎯 Squad data set successfully');
         // No more popup alert - info will be shown in header
       } else {
+        console.log('⚠️ No squad data found in response');
         Alert.alert('Error', 'No squad data found for this gameweek');
       }
     } catch (error) {
-      console.error('Error fetching squad data:', error);
+      console.error('❌ Error fetching squad data:', error);
       if (error instanceof Error && error.name === 'AbortError') {
         Alert.alert('Error', 'Request timed out. Please check your connection and try again.');
       } else {
         Alert.alert('Error', 'Failed to fetch squad data. Please check your Squad ID and try again.');
       }
     } finally {
+      console.log('🏁 fetchSquadData completed, setting squadLoading to false');
       setSquadLoading(false);
     }
   };
@@ -284,6 +321,14 @@ const PointsScreen: React.FC = () => {
 
   // Show squad loading state if we don't have squad data yet
   if (!squadDataFetched || startingXI.length === 0) {
+    console.log('🔍 Debug - Loading state:', {
+      squadDataFetched,
+      squadLoading,
+      startingXILength: startingXI.length,
+      playersLength: players.length,
+      fplPlayersLength: fplPlayers.length
+    });
+    
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -311,7 +356,7 @@ const PointsScreen: React.FC = () => {
               {squadLoading 
                 ? '🔄 Loading squad data...' 
                 : squadDataFetched 
-                  ? 'Loading squad data...' 
+                  ? 'Squad data loaded successfully!' 
                   : 'Click "Fetch Squad Data" to load your FPL team'
               }
             </Text>

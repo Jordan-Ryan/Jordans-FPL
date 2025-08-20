@@ -92,7 +92,7 @@ export function useExpectedPoints(fplApiService: any) {
     try {
       const predictions = await predictor.predictAllPlayers(fplApiService);
       setPlayerPredictions(predictions);
-      const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
+      const optimalTeams = await optimizer.generateAllOptimalTeams(predictions);
       setBest11Teams(optimalTeams);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to refresh expected points';
