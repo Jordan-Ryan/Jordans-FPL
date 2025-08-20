@@ -61,20 +61,16 @@ const PlayersScreen: React.FC = () => {
     if (cachedData && isDataLoaded) {
       console.log('📦 Using cached data for Players screen');
       console.log('📊 Cached data summary:');
-      console.log(`  - FPL Players: ${cachedData.fplPlayers?.length || 0}`);
-      console.log(`  - Teams: ${cachedData.teams?.length || 0}`);
-      console.log(`  - Fixtures: ${cachedData.fixtures?.length || 0}`);
+      console.log(`  - PlayersModel: ${cachedData.playersModel?.length || 0}`);
       console.log(`  - Player Predictions: ${cachedData.playerPredictions?.length || 0}`);
-      console.log(`  - Best 11 Teams: ${cachedData.best11Teams ? Object.keys(cachedData.best11Teams).length : 0}`);
       
-      if (cachedData.playerPredictions?.length > 0) {
-        console.log('📊 Sample player predictions:');
-        cachedData.playerPredictions.slice(0, 5).forEach((pred, index) => {
-          console.log(`  ${index + 1}. ${pred.name} (${pred.position}): GW2: ${pred.gw2_xp}, GW3: ${pred.gw3_xp}, GW4: ${pred.gw4_xp}, Total: ${pred.total_3gw_xp}`);
-        });
+      // Use premerged model
+      if (cachedData.playersModel?.length) {
+        setPlayers(cachedData.playersModel as any);
+      } else {
+        // Fallback to raw players if model missing
+        setPlayers(cachedData.fplPlayers);
       }
-      
-      setPlayers(cachedData.fplPlayers);
       setTeams(cachedData.teams);
       setFixtures(cachedData.fixtures);
       setCurrentGameweek(cachedData.currentGameweek.id);
@@ -83,7 +79,7 @@ const PlayersScreen: React.FC = () => {
     } else if (!isDataLoaded) {
       console.log('⏳ Data still loading...');
     } else {
-      // Fallback: fetch data if no cache
+      // Ultimate fallback only if absolutely no cache
       console.log('⚠️ No cached data, fetching from API');
       fetchData();
     }
@@ -91,34 +87,28 @@ const PlayersScreen: React.FC = () => {
 
   // Merge expected points data with players from cache
   const playersWithXP = useMemo(() => {
-    console.log('🔄 Calculating playersWithXP...');
-    console.log(`  - Players: ${players.length}`);
-    console.log(`  - Predictions: ${cachedData?.playerPredictions?.length || 0}`);
-    
+    // If players already include XP (playersModel), return directly
+    const hasXP = players.length > 0 && (players[0] as any).total_3gw_xp !== undefined;
+    if (hasXP) return players;
+
     if (!cachedData?.playerPredictions?.length || !players.length) {
-      console.log('⚠️ Missing data for XP calculation, returning original players');
       return players;
     }
     
     const merged = players.map(player => {
       const prediction = cachedData.playerPredictions.find((p: any) => p.player_id === player.id);
       if (prediction) {
-        const playerWithXP = {
+        return {
           ...player,
           gw2_xp: prediction.gw2_xp,
           gw3_xp: prediction.gw3_xp,
           gw4_xp: prediction.gw4_xp,
           total_3gw_xp: prediction.total_3gw_xp,
-        };
-        console.log(`✅ ${player.web_name}: GW2: ${playerWithXP.gw2_xp}, GW3: ${playerWithXP.gw3_xp}, GW4: ${playerWithXP.gw4_xp}, Total: ${playerWithXP.total_3gw_xp}`);
-        return playerWithXP;
-      } else {
-        console.log(`⚠️ No prediction found for ${player.web_name} (ID: ${player.id})`);
-        return player;
+        } as any;
       }
+      return player as any;
     });
     
-    console.log(`✅ Merged ${merged.length} players with XP data`);
     return merged;
   }, [players, cachedData?.playerPredictions]);
 

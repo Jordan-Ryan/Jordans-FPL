@@ -96,6 +96,17 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
       setCurrentStep(5);
 
       // Cache the results in context
+      const playersModel = playersData.map((p: any) => {
+        const pred = predictions.find((x: any) => x.player_id === p.id);
+        return {
+          ...p,
+          gw2_xp: pred?.gw2_xp ?? 0,
+          gw3_xp: pred?.gw3_xp ?? 0,
+          gw4_xp: pred?.gw4_xp ?? 0,
+          total_3gw_xp: pred?.total_3gw_xp ?? 0,
+        };
+      });
+
       const appData = {
         fplPlayers: playersData,
         teams: teamsData,
@@ -103,8 +114,9 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
         currentGameweek: gameweek,
         playerPredictions: predictions,
         best11Teams: best11Teams,
+        playersModel,
         timestamp: Date.now(),
-      };
+      } as any;
 
       console.log('💾 Caching app data in context...');
       console.log('📊 Final data summary:');

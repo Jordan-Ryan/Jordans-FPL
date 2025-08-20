@@ -7,6 +7,7 @@ interface CachedAppData {
   currentGameweek: any;
   playerPredictions: any[];
   best11Teams: any;
+  playersModel?: any[]; // premerged players with XP for Players tab
   timestamp: number;
 }
 
@@ -38,7 +39,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     console.log('💾 Setting cached data in context:', {
       playersCount: data.fplPlayers?.length,
       predictionsCount: data.playerPredictions?.length,
-      best11Count: data.best11Teams ? Object.keys(data.best11Teams).length : 0
+      best11Count: data.best11Teams ? Object.keys(data.best11Teams).length : 0,
+      playersModelCount: data.playersModel?.length || 0
     });
     setCachedDataState(data);
   };

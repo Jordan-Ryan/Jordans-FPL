@@ -50,7 +50,7 @@ const Best11Screen: React.FC = () => {
     }
   };
 
-  // Get current team data
+  // Get current team data from cache only
   const currentTeam = cachedData?.best11Teams?.[`gw${currentGameweek}` as keyof typeof cachedData.best11Teams];
   const gameweekOptions = [2, 3, 4];
 
