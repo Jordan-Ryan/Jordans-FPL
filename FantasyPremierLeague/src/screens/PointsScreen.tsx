@@ -44,7 +44,6 @@ const PointsScreen: React.FC = () => {
   // Squad performance data
   const [squadPerformance, setSquadPerformance] = useState<{
     totalPoints: number;
-    rank: number;
     gameweek: number;
   } | null>(null);
 
@@ -127,7 +126,6 @@ const PointsScreen: React.FC = () => {
         // Store squad performance data for header display
         setSquadPerformance({
           totalPoints: data.entry_history?.points || 0,
-          rank: data.entry_history?.rank || 0,
           gameweek: gameweek
         });
         
@@ -324,9 +322,6 @@ const PointsScreen: React.FC = () => {
               <View style={styles.squadPerformance}>
                 <Text style={styles.performanceText}>
                   GW{squadPerformance.gameweek}: {squadPerformance.totalPoints} pts
-                </Text>
-                <Text style={styles.rankText}>
-                  Rank: {squadPerformance.rank.toLocaleString()}
                 </Text>
               </View>
             ) : (
