@@ -222,4 +222,85 @@ export const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '500',
   },
+
+  // Fetch Squad Data Button Styles
+  fetchButton: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: theme.spacing.md,
+  },
+
+  fetchButtonText: {
+    color: theme.colors.textWhite,
+    fontSize: theme.typography.md,
+    fontWeight: '600',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalContent: {
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.xl,
+    width: '85%',
+    maxWidth: 400,
+    ...theme.shadows.medium,
+  },
+
+  modalTitle: {
+    fontSize: theme.typography.xxl,
+    fontWeight: 'bold',
+    marginBottom: theme.spacing.lg,
+    textAlign: 'center',
+  },
+
+  modalLabel: {
+    fontSize: theme.typography.md,
+    fontWeight: '600',
+    marginBottom: theme.spacing.sm,
+    marginTop: theme.spacing.md,
+  },
+
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    fontSize: theme.typography.md,
+    marginBottom: theme.spacing.sm,
+  },
+
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing.xl,
+  },
+
+  modalButton: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: theme.spacing.xs,
+  },
+
+  cancelButton: {
+    backgroundColor: theme.colors.textSecondary,
+  },
+
+  cancelButtonText: {
+    color: theme.colors.textWhite,
+    fontSize: theme.typography.md,
+    fontWeight: '600',
+  },
 }); 

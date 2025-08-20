@@ -7,6 +7,9 @@ import {
   ScrollView,
   Dimensions,
   Image,
+  TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { Player, FPLPlayer, FPLTeam } from '../types';
@@ -31,6 +34,13 @@ const PointsScreen: React.FC = () => {
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
+
+  // New state for squad data fetching
+  const [showSquadModal, setShowSquadModal] = useState(false);
+  const [squadId, setSquadId] = useState('397418');
+  const [selectedGameweek, setSelectedGameweek] = useState(1);
+  const [squadLoading, setSquadLoading] = useState(false);
+  const [squadDataFetched, setSquadDataFetched] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -69,6 +79,74 @@ const PointsScreen: React.FC = () => {
     
     // Here you could save to AsyncStorage or send to your backend
     // For now, we'll just update the local state
+  };
+
+  // Fetch squad data from FPL API
+  const fetchSquadData = async () => {
+    if (!squadId.trim()) {
+      Alert.alert('Error', 'Please enter a valid Squad ID');
+      return;
+    }
+
+    setSquadLoading(true);
+    try {
+      const response = await fetch(`https://fantasy.premierleague.com/api/entry/${squadId.trim()}/event/${selectedGameweek}/picks/`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.picks && data.picks.length > 0) {
+        // Convert FPL API data to our Player format
+        const convertedPlayers: Player[] = data.picks.map((pick: any, index: number) => {
+          const fplPlayer = fplPlayers.find(p => p.id === pick.element);
+          const isStarter = pick.position <= 11;
+          
+          return {
+            id: pick.element,
+            name: fplPlayer?.web_name || `Player ${pick.element}`,
+            team: fplPlayer?.team || 0,
+            team_position: pick.position,
+            starter: isStarter,
+            captain: pick.is_captain,
+            vice_captain: pick.is_vice_captain,
+            multiplier: pick.multiplier,
+            points: pick.multiplier > 0 ? (fplPlayer?.event_points || 0) * pick.multiplier : 0,
+            price: fplPlayer?.now_cost || 0,
+            form: fplPlayer?.form || '0.0',
+            total_points: fplPlayer?.total_points || 0,
+            ict_index: fplPlayer?.ict_index || '0.0',
+            selected_by_percent: fplPlayer?.selected_by_percent || '0.0',
+            transfers_in: fplPlayer?.transfers_in || 0,
+            transfers_out: fplPlayer?.transfers_out || 0,
+            dreamteam_count: fplPlayer?.dreamteam_count || 0,
+            status: fplPlayer?.status || 'a',
+            special: fplPlayer?.special || false,
+            chance_of_playing_next_round: fplPlayer?.chance_of_playing_next_round,
+            chance_of_playing_this_round: fplPlayer?.chance_of_playing_this_round,
+            news: fplPlayer?.news || '',
+          };
+        });
+        
+        setPlayers(convertedPlayers);
+        setSquadDataFetched(true);
+        setShowSquadModal(false);
+        
+        Alert.alert(
+          'Success!', 
+          `Squad data fetched for Gameweek ${selectedGameweek}\nTotal Points: ${data.entry_history?.points || 0}\nRank: ${data.entry_history?.rank || 'N/A'}`
+        );
+      } else {
+        Alert.alert('Error', 'No squad data found for this gameweek');
+      }
+    } catch (error) {
+      console.error('Error fetching squad data:', error);
+      Alert.alert('Error', 'Failed to fetch squad data. Please check your Squad ID and try again.');
+    } finally {
+      setSquadLoading(false);
+    }
   };
 
   // Get squad statistics
@@ -196,8 +274,84 @@ const PointsScreen: React.FC = () => {
         <Text style={styles.deadlineText}>
           {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
         </Text>
-        {/* The selectedPlayer state was removed, so this block is removed */}
+        
+        {/* Fetch Squad Data Button */}
+        <TouchableOpacity
+          style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+          onPress={() => setShowSquadModal(true)}
+        >
+          <Text style={styles.fetchButtonText}>
+            {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Squad Data Modal */}
+      <Modal
+        visible={showSquadModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSquadModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+              Fetch Squad Data
+            </Text>
+            
+            <Text style={[styles.modalLabel, { color: theme.colors.textSecondary }]}>
+              Squad ID:
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { 
+                backgroundColor: theme.colors.background,
+                color: theme.colors.text,
+                borderColor: theme.colors.textSecondary 
+              }]}
+              value={squadId}
+              onChangeText={setSquadId}
+              placeholder="Enter your Squad ID (e.g., 397418)"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="numeric"
+            />
+            
+            <Text style={[styles.modalLabel, { color: theme.colors.textSecondary }]}>
+              Gameweek:
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { 
+                backgroundColor: theme.colors.background,
+                color: theme.colors.text,
+                borderColor: theme.colors.textSecondary 
+              }]}
+              value={selectedGameweek.toString()}
+              onChangeText={(text) => setSelectedGameweek(parseInt(text) || 1)}
+              placeholder="Enter gameweek number"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="numeric"
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowSquadModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+                onPress={fetchSquadData}
+                disabled={squadLoading}
+              >
+                <Text style={styles.fetchButtonText}>
+                  {squadLoading ? 'Fetching...' : 'Fetch Data'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Football Pitch */}
