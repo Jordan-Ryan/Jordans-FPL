@@ -42,8 +42,23 @@ export function useExpectedPoints(fplApiService: any) {
 
         // Step 2: Optimize best 11 teams
         setProgress('Optimizing best 11 teams...');
-        const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
-        setBest11Teams(optimalTeams);
+        
+        // Add timeout protection for optimization
+        const optimizationPromise = new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Best 11 optimization timed out after 30 seconds'));
+          }, 30000); // 30 second timeout
+          
+          try {
+            const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
+            resolve(optimalTeams);
+          } catch (err) {
+            reject(err);
+          }
+        });
+        
+        const optimalTeams = await optimizationPromise;
+        setBest11Teams(optimalTeams as any);
 
         if (!cancelled) {
           console.log(`✅ Loaded ${predictions.length} predictions + best 11 teams`);

@@ -24,9 +24,17 @@ export class Best11Optimizer {
   ];
 
   generateOptimalTeam(players: PlayerPrediction[], gameweek: 2 | 3 | 4): OptimalTeam {
+    console.log(`🎯 Generating optimal team for GW${gameweek} with ${players.length} players...`);
+    
     const xpField = `gw${gameweek}_xp` as keyof PlayerPrediction;
     
     const availablePlayers = players.filter(p => (p[xpField] as number) > 0);
+    console.log(`📊 Found ${availablePlayers.length} players with positive XP for GW${gameweek}`);
+    
+    if (availablePlayers.length === 0) {
+      console.log(`⚠️ No players with positive XP for GW${gameweek}, returning empty team`);
+      return this.createEmptyTeam(gameweek);
+    }
     
     const playersWithValue = availablePlayers.map(player => ({
       ...player,
@@ -41,6 +49,8 @@ export class Best11Optimizer {
       FWD: playersWithValue.filter(p => p.position === 'FWD')
     };
 
+    console.log(`👥 Position breakdown: GK: ${playersByPosition.GK.length}, DEF: ${playersByPosition.DEF.length}, MID: ${playersByPosition.MID.length}, FWD: ${playersByPosition.FWD.length}`);
+
     Object.keys(playersByPosition).forEach(pos => {
       playersByPosition[pos as keyof typeof playersByPosition]
         .sort((a, b) => b.valueEfficiency - a.valueEfficiency);
@@ -49,14 +59,22 @@ export class Best11Optimizer {
     let bestTeam: OptimalTeam | null = null;
 
     for (const formation of this.FORMATIONS) {
+      console.log(`🔄 Trying formation: ${formation.name}`);
       const team = this.optimizeTeamForFormation(playersByPosition, formation, gameweek, xpField as string);
       
       if (team && (!bestTeam || team.total_expected_points > bestTeam.total_expected_points)) {
         bestTeam = team;
+        console.log(`✅ New best team: ${formation.name} with ${team.total_expected_points} XP`);
       }
     }
 
-    return bestTeam || this.createEmptyTeam(gameweek);
+    if (!bestTeam) {
+      console.log(`⚠️ No valid team found for GW${gameweek}, returning empty team`);
+      return this.createEmptyTeam(gameweek);
+    }
+
+    console.log(`🏆 Final optimal team for GW${gameweek}: ${bestTeam.formation}, ${bestTeam.total_expected_points} XP, £${bestTeam.total_cost}m`);
+    return bestTeam;
   }
 
   private optimizeTeamForFormation(
@@ -65,6 +83,7 @@ export class Best11Optimizer {
     gameweek: number,
     xpField: string
   ): OptimalTeam | null {
+    console.log(`🔧 Optimizing team for formation ${formation.name}...`);
     
     const squad: PlayerPrediction[] = [];
     let remainingBudget = this.BUDGET;
@@ -72,6 +91,8 @@ export class Best11Optimizer {
     for (const [position, maxCount] of Object.entries(this.SQUAD_LIMITS)) {
       const positionPlayers = playersByPosition[position];
       const formationNeed = formation[position] || 0;
+
+      console.log(`📍 Position ${position}: need ${formationNeed}, max ${maxCount}, available ${positionPlayers.length}`);
 
       let selectedCount = 0;
 
@@ -85,6 +106,10 @@ export class Best11Optimizer {
           squad.push(player);
           remainingBudget -= player.price;
           selectedCount++;
+          console.log(`✅ Selected ${player.name} (${position}) for £${player.price}m, remaining budget: £${remainingBudget}m`);
+        } else {
+          console.log(`⚠️ No suitable ${position} player found for starting XI, budget: £${remainingBudget}m`);
+          break; // Can't complete this formation
         }
       }
 
@@ -94,19 +119,28 @@ export class Best11Optimizer {
         .filter((p: any) => !squad.includes(p) && p.price <= remainingBudget)
         .sort((a: any, b: any) => a.price - b.price);
 
+      console.log(`🔄 Filling ${remainingNeeded} bench spots for ${position}, ${cheapestAvailable.length} available`);
+
       for (let i = 0; i < remainingNeeded && i < cheapestAvailable.length; i++) {
         const player = cheapestAvailable[i];
         if (remainingBudget >= player.price) {
           squad.push(player);
           remainingBudget -= player.price;
           selectedCount++;
+          console.log(`🪑 Added ${player.name} (${position}) to bench for £${player.price}m`);
+        } else {
+          console.log(`💰 Insufficient budget for ${player.name}, need £${player.price}m, have £${remainingBudget}m`);
+          break;
         }
       }
 
       if (selectedCount < formationNeed) {
+        console.log(`❌ Cannot complete formation ${formation.name} - insufficient ${position} players`);
         return null;
       }
     }
+
+    console.log(`📋 Squad assembled: ${squad.length} players, remaining budget: £${remainingBudget}m`);
 
     const startingXI: PlayerPrediction[] = [];
     const squadByPosition = {
@@ -139,6 +173,8 @@ export class Best11Optimizer {
     const startingPoints = startingXI.reduce((sum, p) => sum + (p[xpField] as number), 0);
     const captainBonus = captain ? (captain[xpField] as number) : 0;
     const totalExpectedPoints = startingPoints + captainBonus;
+
+    console.log(`⚽ Starting XI: ${startingXI.length} players, ${startingPoints} XP, Captain: ${captain?.name} (+${captainBonus} XP)`);
 
     return {
       gameweek,
@@ -175,3 +211,4 @@ export class Best11Optimizer {
     };
   }
 }
+
