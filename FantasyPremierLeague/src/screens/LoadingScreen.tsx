@@ -83,34 +83,13 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
       
       const optimizer = new Best11Optimizer();
       
-      // Add timeout protection for optimization
-      const optimizationPromise = new Promise((resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error('Best 11 optimization timed out after 15 seconds'));
-        }, 15000); // 15 second timeout
-        
-        try {
-          console.log('🔧 Calling generateAllOptimalTeams...');
-          const optimalTeams = optimizer.generateAllOptimalTeams(predictions);
-          console.log('✅ Best 11 generation completed!');
-          console.log('📊 Optimal teams generated:', optimalTeams ? Object.keys(optimalTeams).length : 0);
-          
-          if (optimalTeams) {
-            Object.entries(optimalTeams).forEach(([gw, team]) => {
-              if (team) {
-                console.log(`  ${gw}: ${team.formation}, ${team.total_expected_points} XP, £${team.total_cost}m, ${team.starting_xi?.length || 0} players`);
-              }
-            });
-          }
-          
-          resolve(optimalTeams);
-        } catch (err) {
-          console.error('❌ Best 11 generation failed:', err);
-          reject(err);
-        }
-      });
+      // Properly await async optimizer with timeout protection
+      const best11Teams = await Promise.race([
+        optimizer.generateAllOptimalTeams(predictions),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Best 11 optimization timed out after 15 seconds')), 15000))
+      ]);
       
-      const best11Teams = await optimizationPromise;
+      console.log('✅ Best 11 generation completed (awaited).');
 
       // Step 5: Finalize
       setProgress('Finalizing...');

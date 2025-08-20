@@ -269,7 +269,28 @@ export class FPLPredictor2025_26 {
       elementSummary.history || []
     );
 
-    const upcomingFixtures = (elementSummary.fixtures || []).slice(0, 3);
+    // Use up to 3 future fixtures; if missing, synthesize neutral fixtures so XP isn't stuck at 0
+    let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 3);
+    if (!upcomingFixtures || upcomingFixtures.length === 0) {
+      // Synthesize 3 neutral fixtures with average difficulty
+      upcomingFixtures = [
+        { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+        { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
+        { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+      ];
+    } else if (upcomingFixtures.length < 3) {
+      const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
+      while (upcomingFixtures.length < 3) {
+        upcomingFixtures.push({
+          event: lastEvent + (upcomingFixtures.length),
+          is_home: upcomingFixtures.length % 2 === 0,
+          team_a: player.team,
+          team_h: player.team,
+          difficulty: 3,
+        });
+      }
+    }
+
     const predictions: any[] = [];
 
     let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0;
@@ -279,18 +300,18 @@ export class FPLPredictor2025_26 {
 
       const context = {
         element_type: player.element_type,
-        is_home: fixture.is_home,
-        chance_of_playing_next_round: player.chance_of_playing_next_round
+        is_home: !!fixture.is_home,
+        chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100
       };
 
       const expectedPoints = this.predict(features, context);
       const roundedPoints = Math.round(expectedPoints * 10) / 10;
 
       const fixtureData = {
-        gameweek: fixture.event,
+        gameweek: fixture.event ?? (2 + i),
         opponent: this.getOpponentName(fixture, teams),
         home_away: fixture.is_home ? 'H' as const : 'A' as const,
-        difficulty: fixture.difficulty,
+        difficulty: fixture.difficulty ?? 3,
         expected_points: roundedPoints
       };
 
@@ -308,7 +329,7 @@ export class FPLPredictor2025_26 {
       name: player.web_name,
       team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
       position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
-      price: player.now_cost / 10,
+      price: (player.now_cost || 0) / 10,
       gw2_xp,
       gw3_xp,
       gw4_xp,
