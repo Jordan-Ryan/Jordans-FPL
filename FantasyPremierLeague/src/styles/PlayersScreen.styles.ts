@@ -275,6 +275,58 @@ export const styles = StyleSheet.create({
   },
   xpStatusText: {
     fontSize: 14,
-    fontWeight: '500',
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  // Best 11 Section Styles
+  best11Section: {
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+
+  best11Title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+
+  best11Grid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 12,
+  },
+
+  best11Card: {
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#f8f9fa',
+    minWidth: 80,
+  },
+
+  best11CardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+
+  best11CardFormation: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+
+  best11CardPoints: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+
+  best11CardCost: {
+    fontSize: 12,
   },
 }); 

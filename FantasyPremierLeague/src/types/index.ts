@@ -9,58 +9,34 @@ export interface Player {
 
 export interface FPLPlayer {
   id: number;
-  web_name: string;
   first_name: string;
   second_name: string;
-  team: number;
+  web_name: string;
   element_type: number;
-  photo: string;
+  team: number;
   now_cost: number;
+  selected_by_percent: string;
   form: string;
   total_points: number;
-  ict_index: string;
-  status: string;
-  news: string;
-  code: number;
-  chance_of_playing_next_round?: number;
-  chance_of_playing_this_round?: number;
-  cost_change_event: number;
-  cost_change_event_fall: number;
-  cost_change_start: number;
-  cost_change_start_fall: number;
-  dreamteam_count: number;
-  ep_next: string;
-  ep_this: string;
   event_points: number;
-  in_dreamteam: boolean;
-  news_added?: string;
-  points_per_game: string;
-  selected_by_percent: string;
-  special: boolean;
-  team_code: number;
+  ict_index: string;
   transfers_in: number;
-  transfers_in_event: number;
   transfers_out: number;
-  transfers_out_event: number;
-  value_form: string;
-  value_season: string;
-  // Season statistics for XP calculation
-  goals_scored?: number;
-  assists?: number;
-  bonus?: number;
-  clean_sheets?: number;
-  minutes?: number;
-  // Expected Points for next 3 gameweeks
-  gw2Xp?: number;
-  gw3Xp?: number;
-  gw4Xp?: number;
-  threeGwXp?: number;
+  dreamteam_count: number;
+  status: string;
+  special: boolean;
+  chance_of_playing_next_round: number | null;
   // Squad-specific properties
   squad_position?: number;
   is_starter?: boolean;
   is_captain?: boolean;
   is_vice_captain?: boolean;
   multiplier?: number;
+  // Expected Points properties
+  gw2_xp?: number;
+  gw3_xp?: number;
+  gw4_xp?: number;
+  total_3gw_xp?: number;
 }
 
 export interface FPLTeam {

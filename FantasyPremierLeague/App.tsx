@@ -10,6 +10,7 @@ import { ThemeProvider } from './src/context/ThemeContext';
 import PointsScreen from './src/screens/PointsScreen';
 import FixturesScreen from './src/screens/FixturesScreen';
 import PlayersScreen from './src/screens/PlayersScreen';
+import Best11Screen from './src/screens/Best11Screen';
 
 // Icons
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,8 @@ function TabNavigator() {
             iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === 'Players') {
             iconName = focused ? 'people' : 'people-outline';
+          } else if (route.name === 'Best 11') {
+            iconName = focused ? 'trophy' : 'trophy-outline';
           } else {
             iconName = 'help-outline'; // Fallback icon
           }
@@ -52,6 +55,7 @@ function TabNavigator() {
       <Tab.Screen name="Points" component={PointsScreen} />
       <Tab.Screen name="Fixtures" component={FixturesScreen} />
       <Tab.Screen name="Players" component={PlayersScreen} />
+      <Tab.Screen name="Best 11" component={Best11Screen} />
     </Tab.Navigator>
   );
 }

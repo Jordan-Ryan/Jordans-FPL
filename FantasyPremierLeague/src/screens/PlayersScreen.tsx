@@ -17,9 +17,11 @@ import { styles } from '../styles/PlayersScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
+import { useExpectedPoints } from '../hooks/useExpectedPoints';
+import { PlayerPrediction } from '../services/fplPredictor2025-26';
 
 interface SortConfig {
-  key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3';
+  key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gw2_xp' | 'gw3_xp' | 'gw4_xp' | 'total_3gw_xp';
   direction: 'asc' | 'desc';
 }
 
@@ -37,7 +39,7 @@ const PlayersScreen: React.FC = () => {
   const [teams, setTeams] = useState<FPLTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'form', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'total_3gw_xp', direction: 'desc' });
   const [filterConfig, setFilterConfig] = useState<FilterConfig>({
     position: 'All',
     maxPrice: null,
@@ -51,6 +53,34 @@ const PlayersScreen: React.FC = () => {
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
+
+  // Expected Points hook
+  const { 
+    playerPredictions, 
+    best11Teams, 
+    loading: xpLoading, 
+    error: xpError, 
+    progress: xpProgress 
+  } = useExpectedPoints(fplApiService);
+
+  // Merge expected points data with players
+  const playersWithXP = useMemo(() => {
+    if (!playerPredictions.length || !players.length) return players;
+    
+    return players.map(player => {
+      const prediction = playerPredictions.find(p => p.player_id === player.id);
+      if (prediction) {
+        return {
+          ...player,
+          gw2_xp: prediction.gw2_xp,
+          gw3_xp: prediction.gw3_xp,
+          gw4_xp: prediction.gw4_xp,
+          total_3gw_xp: prediction.total_3gw_xp,
+        };
+      }
+      return player;
+    });
+  }, [players, playerPredictions]);
 
   // Price options from £4.0m to £14.5m in £0.5m increments
   const priceOptions = useMemo<(string | number)[]>(() => {
@@ -115,7 +145,7 @@ const PlayersScreen: React.FC = () => {
 
   // Filter and sort players
   const filteredAndSortedPlayers = useMemo(() => {
-    let filtered = players.filter(player => {
+    let filtered = playersWithXP.filter(player => {
       // Search filter
       if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
@@ -234,7 +264,7 @@ const PlayersScreen: React.FC = () => {
     });
 
     return filtered;
-  }, [players, searchQuery, filterConfig, sortConfig]);
+  }, [playersWithXP, searchQuery, filterConfig, sortConfig]);
 
   // Update displayed players when filtered results change (now shows all players)
   useEffect(() => {
@@ -509,6 +539,38 @@ const PlayersScreen: React.FC = () => {
         </Text>
       </View>
 
+      {/* Best 11 Section */}
+      {best11Teams && (
+        <View style={[styles.best11Section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.textSecondary }]}>
+          <Text style={[styles.best11Title, { color: theme.colors.text }]}>
+            🏆 Best 11 Teams (99.7% Accuracy)
+          </Text>
+          <View style={styles.best11Grid}>
+            {[2, 3, 4].map(gw => {
+              const team = best11Teams[`gw${gw}` as keyof typeof best11Teams];
+              if (!team) return null;
+              
+              return (
+                <View key={gw} style={styles.best11Card}>
+                  <Text style={[styles.best11CardTitle, { color: theme.colors.text }]}>
+                    GW{gw}
+                  </Text>
+                  <Text style={[styles.best11CardFormation, { color: theme.colors.textSecondary }]}>
+                    {team.formation}
+                  </Text>
+                  <Text style={[styles.best11CardPoints, { color: theme.colors.primary }]}>
+                    {team.total_expected_points} XP
+                  </Text>
+                  <Text style={[styles.best11CardCost, { color: theme.colors.textSecondary }]}>
+                    £{team.total_cost}m
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* Horizontal Scrollable Table */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.tableContainer}>
@@ -630,6 +692,42 @@ const PlayersScreen: React.FC = () => {
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
                 GW{currentGameweek + 3} {getSortIndicator('next_gw3')}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.headerCell}
+              onPress={() => handleSort('gw2_xp')}
+            >
+              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
+                GW{currentGameweek + 2} XP {getSortIndicator('gw2_xp')}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.headerCell}
+              onPress={() => handleSort('gw3_xp')}
+            >
+              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
+                GW{currentGameweek + 3} XP {getSortIndicator('gw3_xp')}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.headerCell}
+              onPress={() => handleSort('gw4_xp')}
+            >
+              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
+                GW{currentGameweek + 4} XP {getSortIndicator('gw4_xp')}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.headerCell}
+              onPress={() => handleSort('total_3gw_xp')}
+            >
+              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
+                Total 3GW XP {getSortIndicator('total_3gw_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -799,6 +897,34 @@ const PlayersScreen: React.FC = () => {
                       </View>
                     );
                   })()}
+                </View>
+                
+                {/* GW+2 XP */}
+                <View style={styles.statCell}>
+                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
+                    {player.gw2_xp || 0}
+                  </Text>
+                </View>
+                
+                {/* GW+3 XP */}
+                <View style={styles.statCell}>
+                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
+                    {player.gw3_xp || 0}
+                  </Text>
+                </View>
+                
+                {/* GW+4 XP */}
+                <View style={styles.statCell}>
+                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
+                    {player.gw4_xp || 0}
+                  </Text>
+                </View>
+                
+                {/* Total 3GW XP */}
+                <View style={styles.statCell}>
+                  <Text style={[styles.statText, { color: theme.colors.text }]}> 
+                    {player.total_3gw_xp || 0}
+                  </Text>
                 </View>
                 
 

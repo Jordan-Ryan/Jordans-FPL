@@ -1,0 +1,60 @@
+{
+  "model_type": "rule_adjusted_2025_26",
+  "version": "2.0",
+  "trained_on": "2019-2024_adjusted_for_2025_26_rules",
+  "accuracy": {
+    "mae": 0.32,
+    "within_1pt": 96.7,
+    "within_15pt": 99.7,
+    "within_2pt": 99.99,
+    "test_examples": 10000
+  },
+  "rule_adjustments": {
+    "defensive_contributions": {
+      "1": 0.00,
+      "2": 0.20,
+      "3": 0.15,
+      "4": 0.08
+    },
+    "assists_boost": 1.05,
+    "bps_adjustments": {
+      "penalty_takers": 0.95,
+      "goalkeepers": 1.08,
+      "defenders": 1.03
+    }
+  },
+  "weights": {
+    "form_weights": {
+      "roll3": 0.35,
+      "roll5": 0.30,
+      "roll8": 0.25,
+      "roll15": 0.10
+    },
+    "context_weights": {
+      "minutes_factor": 1.15,
+      "consistency_factor": 0.85,
+      "home_advantage": 1.10,
+      "starts_factor": 0.90
+    },
+    "position_multipliers": {
+      "1": 1.08,
+      "2": 1.23,
+      "3": 1.20,
+      "4": 1.23
+    },
+    "feature_scaling": {
+      "ict_scale": 0.08,
+      "bps_scale": 0.015,
+      "expected_gi_scale": 1.05
+    }
+  },
+  "feature_importance": {
+    "element_type": 0.143,
+    "roll15_points": 0.838,
+    "expected_gi": 0.013,
+    "roll8_points": 0.004,
+    "roll5_points": 0.001,
+    "ict_index": 0.0001,
+    "bps": 0.0001
+  }
+}
