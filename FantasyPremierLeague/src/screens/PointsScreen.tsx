@@ -61,7 +61,12 @@ const PointsScreen: React.FC = () => {
         
         // Auto-fetch squad data for the most recent gameweek
         setSelectedGameweek(gameweek.id);
-        await fetchSquadData(gameweek.id);
+        try {
+          await fetchSquadData(gameweek.id);
+        } catch (error) {
+          console.log('Auto-fetch failed, user will need to fetch manually:', error);
+          // Don't set loading to false here, let user fetch manually
+        }
         
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -244,11 +249,53 @@ const PointsScreen: React.FC = () => {
     );
   }
 
-  // Don't render players until we have FPL data and have found our players
-  if (fplPlayers.length === 0 || startingXI.length === 0) {
+  // Don't render players until we have FPL data
+  if (fplPlayers.length === 0) {
     return (
       <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading FPL data and finding your players...</Text>
+        <Text style={styles.loadingText}>Loading FPL data...</Text>
+      </View>
+    );
+  }
+
+  // Show squad loading state if we don't have squad data yet
+  if (!squadDataFetched || startingXI.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            {loading ? 'Loading...' : currentGameweek.name}
+          </Text>
+          <Text style={styles.deadlineText}>
+            {loading ? 'Loading deadline...' : fplApiService.formatDeadline(currentGameweek.deadline)}
+          </Text>
+          
+          {/* Fetch Squad Data Button - Right side */}
+          <TouchableOpacity
+            style={[styles.fetchButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => setShowSquadModal(true)}
+          >
+            <Text style={styles.fetchButtonText}>
+              {squadDataFetched ? '🔄 Refresh Squad' : '📊 Fetch Squad Data'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.content}>
+          <View style={styles.squadLoadingContainer}>
+            <Text style={styles.squadLoadingText}>
+              {squadDataFetched ? 'Loading squad data...' : 'Click "Fetch Squad Data" to load your FPL team'}
+            </Text>
+            {!squadDataFetched && (
+              <TouchableOpacity
+                style={[styles.fetchButton, { backgroundColor: theme.colors.primary, marginTop: 20 }]}
+                onPress={() => setShowSquadModal(true)}
+              >
+                <Text style={styles.fetchButtonText}>📊 Load My Squad</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </View>
     );
   }

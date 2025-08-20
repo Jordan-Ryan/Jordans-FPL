@@ -346,4 +346,19 @@ export const styles = StyleSheet.create({
     fontSize: theme.typography.md,
     fontWeight: '600',
   },
+
+  // Squad Loading Styles
+  squadLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+  },
+
+  squadLoadingText: {
+    fontSize: theme.typography.lg,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: theme.spacing.lg,
+  },
 }); 
