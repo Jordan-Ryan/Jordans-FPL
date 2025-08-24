@@ -251,11 +251,24 @@ export class FPLPredictor2025_26 {
     return result;
   }
 
-  private findPlayerBaseline(playerName: string): PlayerSeasonData | null {
+  private findPlayerBaseline(playerName: string, player?: any): PlayerSeasonData | null {
     // DEBUG: Log the search attempt
     console.log(`🔍 SEARCHING BASELINE: Looking for "${playerName}"`);
     
-    // Try exact match first
+    // 0. If we have player object with first_name + second_name, construct full name
+    let fullName = playerName;
+    if (player && player.first_name && player.second_name) {
+      fullName = `${player.first_name} ${player.second_name}`;
+      console.log(`🔍 CONSTRUCTED FULL NAME: "${playerName}" -> "${fullName}"`);
+      
+      // Try exact match with full name first
+      if (this.baselineData?.[fullName]) {
+        console.log(`✅ FULL NAME EXACT MATCH: Found "${fullName}" in baseline data`);
+        return this.baselineData[fullName];
+      }
+    }
+    
+    // 1. Try exact match with original name
     if (this.baselineData?.[playerName]) {
       console.log(`✅ EXACT MATCH: Found "${playerName}" in baseline data`);
       return this.baselineData[playerName];
@@ -770,7 +783,7 @@ export class FPLPredictor2025_26 {
         };
       }
 
-      const baselineData = this.findPlayerBaseline(player.web_name);
+                const baselineData = this.findPlayerBaseline(player.web_name, player);
       console.log(`🔍 BASELINE DATA FOR ${player.web_name}:`, {
         found: !!baselineData,
         baselineHistoryLength: baselineData?.season_history?.length || 0,
@@ -1021,7 +1034,7 @@ export class FPLPredictor2025_26 {
     const promotedTeamIds = [3, 11, 17]; // Burnley, Leeds, Sunderland
     
     // Check if player has no 2024-25 baseline data (new to PL)
-    const has2024_25Data = this.findPlayerBaseline(player.web_name);
+    const has2024_25Data = this.findPlayerBaseline(player.web_name, player);
     
     // Player is new to PL if they have no historical data and no baseline data
     const isNewToPL = !has2024_25Data && historyLength === 0;
