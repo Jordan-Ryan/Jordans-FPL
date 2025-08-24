@@ -799,19 +799,11 @@ export class FPLPredictor2025_26 {
     // 2025-26 promoted teams (adjust team IDs as needed)
     const promotedTeamIds = [3, 11, 17]; // Burnley, Leeds, Sunderland
     
-    // Known new to Premier League players for 2025-26 season
-    const newToPLPlayers = [
-      'Wirtz', 'Cherki', 'Gyökeres', 'Sesko', 'Olise', 'Neto',
-      'Guirassy', 'Nusa', 'Strand Larsen', 'Minteh', 'Summerville',
-      'Bakayoko', 'Zaire-Emery', 'Tel', 'Garnacho', 'Elliott'
-      // Add more based on summer 2025 transfers from non-PL leagues
-    ];
-    
     // Check if player has no 2024-25 baseline data (new to PL)
     const has2024_25Data = this.findPlayerBaseline(player.web_name);
     
-    const isNewToPL = newToPLPlayers.includes(player.web_name) || 
-                      (!has2024_25Data && historyLength === 0);
+    // Player is new to PL if they have no historical data and no baseline data
+    const isNewToPL = !has2024_25Data && historyLength === 0;
     
     const isFromPromotedClub = promotedTeamIds.includes(player.team);
     
