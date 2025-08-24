@@ -32,14 +32,19 @@ export interface FPLPlayer {
   is_captain?: boolean;
   is_vice_captain?: boolean;
   multiplier?: number;
-  // Expected Points properties
+  // Expected Points properties (extended to 8 gameweeks)
   gw2_xp?: number;
   gw3_xp?: number;
   gw4_xp?: number;
+  gw5_xp?: number;
+  gw6_xp?: number;
+  gw7_xp?: number;
+  gw8_xp?: number;
+  gw9_xp?: number;
   total_3gw_xp?: number;
+  total_8gw_xp?: number;
   // Gameweek-specific points from FPL API
   gameweekPoints?: number;
-
 }
 
 export interface FPLTeam {
@@ -83,6 +88,45 @@ export interface Club {
   short_name: string;
   primary_color: string;
   secondary_color: string;
+}
+
+// New comprehensive prediction interfaces for 2025-26 season
+export interface PlayerPrediction {
+  player_id: number;
+  name: string;
+  team: string;
+  position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  price: number;
+  
+  // Extend to 8 gameweeks for strategic planning
+  gw2_xp: number;
+  gw3_xp: number;
+  gw4_xp: number;
+  gw5_xp: number;
+  gw6_xp: number;
+  gw7_xp: number;
+  gw8_xp: number;
+  gw9_xp: number;
+  
+  total_3gw_xp: number; // Keep for backward compatibility
+  total_8gw_xp: number; // Sum of all 8 gameweeks
+  
+  fixtures: Array<{
+    gameweek: number;
+    opponent: string;
+    home_away: 'H' | 'A';
+    difficulty?: number;
+    expected_points: number;
+  }>;
+}
+
+export interface PlayerClassification {
+  isNewToPL: boolean;
+  isFromPromotedClub: boolean;
+  isYoungPlayer: boolean;
+  hasInsufficientData: boolean;
+  penaltyMultiplier: number;
+  dataQuality: 'excellent' | 'good' | 'limited' | 'minimal' | 'new_player';
 }
 
 export interface Fixture {

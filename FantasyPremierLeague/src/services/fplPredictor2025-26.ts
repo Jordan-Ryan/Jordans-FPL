@@ -24,10 +24,17 @@ export interface PlayerPrediction {
   team: string;
   position: string;
   price: number;
+  // Extend to 8 gameweeks for strategic planning
   gw2_xp: number;
   gw3_xp: number;
   gw4_xp: number;
-  total_3gw_xp: number;
+  gw5_xp: number;
+  gw6_xp: number;
+  gw7_xp: number;
+  gw8_xp: number;
+  gw9_xp: number;
+  total_3gw_xp: number; // Keep for backward compatibility
+  total_8gw_xp: number; // Sum of all 8 gameweeks
   fixtures: any[];
   [key: string]: any;
 }
@@ -56,6 +63,7 @@ interface PlayerClassification {
   isYoungPlayer: boolean;
   hasInsufficientData: boolean;
   penaltyMultiplier: number;
+  dataQuality: 'excellent' | 'good' | 'limited' | 'minimal' | 'new_player';
 }
 
 export class FPLPredictor2025_26 {
@@ -455,8 +463,28 @@ export class FPLPredictor2025_26 {
     const classification = this.classifyPlayer(context.player, context.elementSummary || {});
     prediction *= classification.penaltyMultiplier;
     
+    // Add logging for validation
+    if (classification.penaltyMultiplier < 0.9) {
+      console.log(`🔧 PENALTY APPLIED: ${context.player.web_name}`, {
+        penalty: `${classification.penaltyMultiplier.toFixed(2)}x`,
+        newToPL: classification.isNewToPL,
+        promotedClub: classification.isFromPromotedClub,
+        dataQuality: classification.dataQuality || 'unknown'
+      });
+    }
+    
     // 10. CRITICAL: Apply conservative caps (was missing!)
-    prediction = this.applyConservativeCaps(prediction, context.player, classification);
+    const originalPrediction = prediction;
+    prediction = this.applyConservativeCaps(prediction, context.player, classification, context.gameweek || 2);
+    
+    // Add logging for caps
+    if (Math.abs(originalPrediction - prediction) > 0.1) {
+      console.log(`📊 CAP APPLIED: ${context.player.web_name}`, {
+        original: originalPrediction.toFixed(1),
+        capped: prediction.toFixed(1),
+        reason: classification.dataQuality
+      });
+    }
     
     // 11. Availability scaling
     if (context.player.chance_of_playing_next_round !== null && 
@@ -523,7 +551,13 @@ export class FPLPredictor2025_26 {
           gw2_xp: 0,
           gw3_xp: 0,
           gw4_xp: 0,
+          gw5_xp: 0,
+          gw6_xp: 0,
+          gw7_xp: 0,
+          gw8_xp: 0,
+          gw9_xp: 0,
           total_3gw_xp: 0,
+          total_8gw_xp: 0,
           fixtures: []
         };
       }
@@ -536,18 +570,23 @@ export class FPLPredictor2025_26 {
       
 
 
-      // Use up to 3 future fixtures; if missing, synthesize neutral fixtures so XP isn't stuck at 0
-      let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 3);
+      // Use up to 8 future fixtures for strategic planning; if missing, synthesize neutral fixtures
+      let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 8);
       if (!upcomingFixtures || upcomingFixtures.length === 0) {
-        // Synthesize 3 neutral fixtures with average difficulty
+        // Synthesize 8 neutral fixtures with average difficulty
         upcomingFixtures = [
           { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
           { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
           { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 5, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 6, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 7, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 8, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 9, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
         ];
-      } else if (upcomingFixtures.length < 3) {
+      } else if (upcomingFixtures.length < 8) {
         const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
-        while (upcomingFixtures.length < 3) {
+        while (upcomingFixtures.length < 8) {
           upcomingFixtures.push({
             event: lastEvent + (upcomingFixtures.length),
             is_home: upcomingFixtures.length % 2 === 0,
@@ -560,9 +599,9 @@ export class FPLPredictor2025_26 {
 
       const predictions: any[] = [];
 
-      let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0;
+      let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0, gw5_xp = 0, gw6_xp = 0, gw7_xp = 0, gw8_xp = 0, gw9_xp = 0;
 
-      for (let i = 0; i < upcomingFixtures.length && i < 3; i++) {
+      for (let i = 0; i < upcomingFixtures.length && i < 8; i++) {
         const fixture = upcomingFixtures[i];
 
         const context = {
@@ -571,12 +610,11 @@ export class FPLPredictor2025_26 {
           element_type: player.element_type,
           is_home: !!fixture.is_home,
           fixture: fixture, // Add fixture data for FDR calculation
-          chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100
+          chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100,
+          gameweek: fixture.event || (2 + i) // Add gameweek for conservative caps
         };
 
         const expectedPoints = this.predict(features, context);
-        
-
         
         const roundedPoints = Math.round(expectedPoints * 10) / 10;
 
@@ -593,12 +631,21 @@ export class FPLPredictor2025_26 {
 
         predictions.push(fixtureData);
 
-        if (i === 0) gw2_xp = finalPoints;
-        if (i === 1) gw3_xp = finalPoints;
-        if (i === 2) gw4_xp = finalPoints;
+        // Assign to specific gameweek variables
+        switch (i) {
+          case 0: gw2_xp = finalPoints; break;
+          case 1: gw3_xp = finalPoints; break;
+          case 2: gw4_xp = finalPoints; break;
+          case 3: gw5_xp = finalPoints; break;
+          case 4: gw6_xp = finalPoints; break;
+          case 5: gw7_xp = finalPoints; break;
+          case 6: gw8_xp = finalPoints; break;
+          case 7: gw9_xp = finalPoints; break;
+        }
       }
 
       const total_3gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp) * 10) / 10;
+      const total_8gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp + gw5_xp + gw6_xp + gw7_xp + gw8_xp + gw9_xp) * 10) / 10;
 
       // Final validation of all values
       const result = {
@@ -610,7 +657,13 @@ export class FPLPredictor2025_26 {
         gw2_xp: isNaN(gw2_xp) ? 0 : gw2_xp,
         gw3_xp: isNaN(gw3_xp) ? 0 : gw3_xp,
         gw4_xp: isNaN(gw4_xp) ? 0 : gw4_xp,
+        gw5_xp: isNaN(gw5_xp) ? 0 : gw5_xp,
+        gw6_xp: isNaN(gw6_xp) ? 0 : gw6_xp,
+        gw7_xp: isNaN(gw7_xp) ? 0 : gw7_xp,
+        gw8_xp: isNaN(gw8_xp) ? 0 : gw8_xp,
+        gw9_xp: isNaN(gw9_xp) ? 0 : gw9_xp,
         total_3gw_xp: isNaN(total_3gw_xp) ? 0 : total_3gw_xp,
+        total_8gw_xp: isNaN(total_8gw_xp) ? 0 : total_8gw_xp,
         fixtures: predictions
       };
 
@@ -630,7 +683,13 @@ export class FPLPredictor2025_26 {
         gw2_xp: 0,
         gw3_xp: 0,
         gw4_xp: 0,
+        gw5_xp: 0,
+        gw6_xp: 0,
+        gw7_xp: 0,
+        gw8_xp: 0,
+        gw9_xp: 0,
         total_3gw_xp: 0,
+        total_8gw_xp: 0,
         fixtures: []
       };
     }
@@ -657,7 +716,11 @@ export class FPLPredictor2025_26 {
           const elementSummary = await fplApiService.getElementSummary(player.id);
           const prediction = await this.predictPlayer(player, elementSummary, teams);
           
-          if (prediction && !isNaN(prediction.gw2_xp) && !isNaN(prediction.gw3_xp) && !isNaN(prediction.gw4_xp)) {
+          if (prediction && 
+              !isNaN(prediction.gw2_xp) && !isNaN(prediction.gw3_xp) && !isNaN(prediction.gw4_xp) &&
+              !isNaN(prediction.gw5_xp) && !isNaN(prediction.gw6_xp) && !isNaN(prediction.gw7_xp) &&
+              !isNaN(prediction.gw8_xp) && !isNaN(prediction.gw9_xp) &&
+              !isNaN(prediction.total_8gw_xp)) {
             successCount++;
             return prediction;
           } else {
@@ -687,7 +750,27 @@ export class FPLPredictor2025_26 {
       }
     }
 
-
+    console.log(`✅ Predictions completed: ${successCount} successful, ${errorCount} errors`);
+    
+    // Log summary of new player penalties applied
+    const newPlayers = results.filter(p => {
+      const player = allPlayers.find((ap: any) => ap.id === p.player_id);
+      return player && this.classifyPlayer(player, {}).isNewToPL;
+    });
+    
+    const promotedPlayers = results.filter(p => {
+      const player = allPlayers.find((ap: any) => ap.id === p.player_id);
+      return player && this.classifyPlayer(player, {}).isFromPromotedClub;
+    });
+    
+    console.log(`🔧 NEW PLAYER PENALTIES: ${newPlayers.length} players got 40% reduction`);
+    console.log(`🔧 PROMOTED CLUB PENALTIES: ${promotedPlayers.length} players got 30% reduction`);
+    
+    if (newPlayers.length > 0) {
+      console.log(`📊 Sample new player XP (GW2):`, 
+        newPlayers.slice(0, 3).map(p => `${p.name}: ${p.gw2_xp.toFixed(1)}`).join(', ')
+      );
+    }
 
     return results;
   }
@@ -699,10 +782,12 @@ export class FPLPredictor2025_26 {
     // 2025-26 promoted teams (adjust team IDs as needed)
     const promotedTeamIds = [13, 14, 15]; // Leicester, Ipswich, Southampton
     
-    // Known new to Premier League players (add more as identified)
+    // Known new to Premier League players for 2025-26 season
     const newToPLPlayers = [
       'Wirtz', 'Cherki', 'Gyökeres', 'Sesko', 'Olise', 'Neto',
-      // Add other known summer 2025 signings from non-PL leagues
+      'Guirassy', 'Nusa', 'Strand Larsen', 'Minteh', 'Summerville',
+      'Bakayoko', 'Zaire-Emery', 'Tel', 'Garnacho', 'Elliott'
+      // Add more based on summer 2025 transfers from non-PL leagues
     ];
     
     // Check if player has no 2024-25 baseline data (new to PL)
@@ -719,32 +804,35 @@ export class FPLPredictor2025_26 {
     
     // Calculate combined penalty multiplier
     let penaltyMultiplier = 1.0;
+    let dataQuality: 'excellent' | 'good' | 'limited' | 'minimal' | 'new_player' = 'good';
     
     if (isNewToPL) {
       penaltyMultiplier *= 0.60; // 40% reduction for Premier League newcomers
+      dataQuality = 'new_player';
     }
     
-    if (isFromPromotedClub) {
+    if (isFromPromotedClub && !isNewToPL) {
       penaltyMultiplier *= 0.70; // 30% reduction for promoted club players
+      dataQuality = 'limited';
     }
     
-    if (isYoungPlayer && !isNewToPL) {
+    if (isYoungPlayer && !isNewToPL && !isFromPromotedClub) {
       penaltyMultiplier *= 0.75; // 25% reduction for young/inexperienced players
     }
     
     if (hasInsufficientData && !isNewToPL && !isFromPromotedClub) {
       const dataReduction = historyLength < 3 ? 0.65 : historyLength < 6 ? 0.75 : 0.85;
       penaltyMultiplier *= dataReduction;
+      dataQuality = historyLength < 3 ? 'minimal' : 'limited';
     }
-    
-
     
     return {
       isNewToPL,
       isFromPromotedClub,
       isYoungPlayer,
       hasInsufficientData,
-      penaltyMultiplier
+      penaltyMultiplier,
+      dataQuality
     };
   }
 
@@ -782,7 +870,7 @@ export class FPLPredictor2025_26 {
   }
 
   // NEW: Conservative Caps
-  private applyConservativeCaps(prediction: number, player: any, classification: PlayerClassification): number {
+  private applyConservativeCaps(prediction: number, player: any, classification: PlayerClassification, gameweek: number): number {
     let cappedPrediction = prediction;
     
     // Apply conservative caps based on player classification
@@ -800,6 +888,14 @@ export class FPLPredictor2025_26 {
     
     if (classification.isYoungPlayer) {
       cappedPrediction = Math.min(cappedPrediction, 4.5); // Conservative for young players
+    }
+    
+    // Additional caps for later gameweeks (predictions get less reliable)
+    if (gameweek >= 6) {
+      cappedPrediction *= 0.95; // Slight reduction for distant predictions
+    }
+    if (gameweek >= 8) {
+      cappedPrediction *= 0.90; // Further reduction for very distant predictions
     }
     
     return cappedPrediction;
