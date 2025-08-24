@@ -93,6 +93,14 @@ export class FPLPredictor2025_26 {
       } else {
         console.log(`❌ MOHAMED SALAH NOT FOUND in baseline data`);
       }
+      
+      // Check for any Salah variants
+      const salahVariants = Object.keys(this.baselineData).filter(name => 
+        name.toLowerCase().includes('salah')
+      );
+      if (salahVariants.length > 0) {
+        console.log(`🔍 SALAH VARIANTS FOUND:`, salahVariants);
+      }
     }
   }
 
@@ -900,7 +908,28 @@ export class FPLPredictor2025_26 {
     const allPlayers = bootstrap.elements;
     const teams = bootstrap.teams;
     
-
+    console.log(`🔍 PREDICT ALL PLAYERS: Processing ${allPlayers.length} players from FPL API`);
+    
+    // Debug: Check if Salah is in the FPL API data
+    const salahPlayer = allPlayers.find((p: any) => p.web_name.toLowerCase().includes('salah'));
+    if (salahPlayer) {
+      console.log(`✅ SALAH FOUND in FPL API data:`, {
+        id: salahPlayer.id,
+        name: salahPlayer.web_name,
+        team: salahPlayer.team,
+        position: salahPlayer.element_type,
+        cost: salahPlayer.now_cost
+      });
+    } else {
+      console.log(`❌ SALAH NOT FOUND in FPL API data`);
+      console.log(`🔍 SAMPLE FPL PLAYERS:`, allPlayers.slice(0, 10).map((p: any) => p.web_name));
+      
+      // Check for any Liverpool players
+      const liverpoolPlayers = allPlayers.filter((p: any) => p.team === 11); // Liverpool team ID
+      if (liverpoolPlayers.length > 0) {
+        console.log(`🔍 LIVERPOOL PLAYERS:`, liverpoolPlayers.slice(0, 5).map((p: any) => p.web_name));
+      }
+    }
     
     const results: PlayerPrediction[] = [];
     const batchSize = 50;
