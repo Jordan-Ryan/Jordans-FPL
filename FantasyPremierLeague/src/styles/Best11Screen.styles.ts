@@ -5,46 +5,36 @@ const { width } = Dimensions.get('window');
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F2F0EF', // Light neutral background
   },
   
   // Header Styles
   header: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    borderBottomColor: '#BBBDBC',
   },
   
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   
   headerLeft: {
     flex: 1,
+    marginRight: 24,
   },
   
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
   },
   
   teamInfo: {
@@ -52,62 +42,63 @@ export const styles = StyleSheet.create({
   },
   
   formationText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: '#BBBDBC',
     marginBottom: 4,
   },
   
   costText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: '#BBBDBC',
     marginBottom: 4,
   },
   
   pointsText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: '#BBBDBC',
     marginBottom: 4,
   },
   
   // Gameweek Selector Styles
   gameweekSelector: {
-    marginTop: 12,
+    marginTop: 16,
   },
   
   gameweekLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 8,
-    color: '#666',
+    color: '#BBBDBC',
   },
   
   gameweekScroll: {
-    flexGrow: 0,
+    flexDirection: 'row',
   },
   
   gameweekButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
+    borderRadius: 12,
+    backgroundColor: '#F2F0EF',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#BBBDBC',
   },
   
   gameweekButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: '#BBBDBC',
   },
+  
+
   
   // Content Styles
   content: {
     flex: 1,
-    paddingHorizontal: 16,
   },
   
   // Loading and Error Styles
@@ -115,178 +106,192 @@ export const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 32,
   },
   
   loadingText: {
-    fontSize: 18,
-    color: '#666',
+    fontSize: 16,
+    color: '#BBBDBC',
     textAlign: 'center',
+    marginTop: 100,
   },
   
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 32,
   },
   
   errorText: {
-    fontSize: 18,
-    color: '#e74c3c',
+    fontSize: 16,
+    color: '#EF4444',
     textAlign: 'center',
   },
   
   // Pitch Container Styles
   pitchContainer: {
-    marginTop: 20,
-    marginBottom: 20,
-    alignItems: 'center',
+    height: 500,
+    marginHorizontal: 0,
+    marginTop: 16,
+    marginBottom: 0,
+    borderRadius: 0,
+    overflow: 'hidden',
+    position: 'relative',
   },
   
   pitchBackground: {
-    width: width - 32,
-    height: 500,
-    borderRadius: 12,
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
   },
   
   formation: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
+    flex: 1,
+    position: 'relative',
   },
   
   playerPosition: {
     position: 'absolute',
-    width: 72,
     alignItems: 'center',
   },
   
   // Player Card Styles
   playerCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 8,
+    backgroundColor: 'rgba(36, 95, 115, 0.1)', // Light teal background
+    borderRadius: 16,
+    paddingTop: 4,
+    paddingHorizontal: 0,
+    paddingBottom: 16,
     alignItems: 'center',
-    width: 72,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    width: 75,
+    height: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    justifyContent: 'space-between',
   },
   
   playerName: {
-    fontSize: 12,
+    fontSize: 8,
     fontWeight: '600',
-    color: '#333',
+    color: '#1F2937',
     textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 2,
-    maxWidth: 64,
+    marginBottom: 0,
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 0,
+    borderRadius: 0,
   },
   
   playerFixture: {
-    fontSize: 10,
-    color: '#666',
+    fontSize: 8,
+    fontWeight: '500',
+    color: '#1F2937',
     textAlign: 'center',
-    maxWidth: 64,
+    marginTop: 0,
+    marginBottom: 0,
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 0,
+    borderRadius: 0,
   },
   
   // Captain/Vice-Captain Badge Styles
   captainBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#f39c12',
+    top: 2,
+    right: 2,
+    backgroundColor: '#245F73',
     borderRadius: 12,
     width: 24,
     height: 24,
-    justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
+    justifyContent: 'center',
+    zIndex: 10,
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: '#FFFFFF',
   },
   
   captainText: {
-    color: '#ffffff',
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 8,
     fontWeight: 'bold',
   },
   
   viceCaptainBadge: {
     position: 'absolute',
-    top: -4,
-    left: -4,
-    backgroundColor: '#3498db',
+    top: 2,
+    right: 2,
+    backgroundColor: '#733E24',
     borderRadius: 12,
     width: 24,
     height: 24,
-    justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
+    justifyContent: 'center',
+    zIndex: 10,
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: '#FFFFFF',
   },
   
   viceCaptainText: {
-    color: '#ffffff',
-    fontSize: 10,
+    color: '#FFFFFF',
+    fontSize: 8,
     fontWeight: 'bold',
   },
   
   // Bench Section Styles
   benchSection: {
-    marginBottom: 20,
+    height: 200,
+    marginHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 0,
+    backgroundColor: '#006241', // Green color to match Points tab
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    position: 'relative',
+    overflow: 'hidden',
   },
   
   benchTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#FFFFFF',
     marginBottom: 16,
-    textAlign: 'center',
+    position: 'relative',
+    zIndex: 1,
   },
   
   benchContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'space-between',
+    position: 'relative',
+    zIndex: 1,
   },
   
   // Stats Section Styles
   statsSection: {
-    marginBottom: 20,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+    backgroundColor: '#006241', // Green color to match Points tab
     padding: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    borderRadius: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   
   statsTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#FFFFFF',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -294,25 +299,24 @@ export const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    marginTop: 16,
   },
   
   statItem: {
     alignItems: 'center',
     flex: 1,
-    minWidth: 80,
   },
   
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#FFFFFF',
     marginBottom: 4,
   },
   
   statLabel: {
     fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
   },
 });

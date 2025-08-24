@@ -9,43 +9,13 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
 
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.md,
-  },
-
-  headerLeft: {
-    flex: 1,
-    marginRight: theme.spacing.md,
-  },
-  
-  headerTitle: {
-    fontSize: theme.typography.xxxxl,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.xs,
-  },
-  
-  deadlineText: {
-    fontSize: theme.typography.lg,
-    color: theme.colors.textSecondary,
-    marginBottom: 0,
-  },
 
   // Gameweek Selector Styles
   gameweekSelector: {
-    marginTop: theme.spacing.md,
+    marginTop: 60, // Add top padding for status bar
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg,
   },
 
   gameweekLabel: {
@@ -72,6 +42,86 @@ export const styles = StyleSheet.create({
     fontSize: theme.typography.md,
     fontWeight: '600',
     color: theme.colors.textSecondary,
+  },
+
+  gameweekTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+  },
+
+  titleArrowButton: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    minWidth: 30,
+    alignItems: 'center',
+  },
+
+  titleArrowText: {
+    fontSize: theme.typography.lg,
+    fontWeight: '600',
+  },
+
+  gameweekTitle: {
+    fontSize: theme.typography.xl,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+  },
+
+  loadingIndicator: {
+    fontSize: theme.typography.md,
+    fontWeight: '500',
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs,
+  },
+
+  pointsIndicator: {
+    fontSize: theme.typography.md,
+    fontWeight: '500',
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs,
+  },
+
+  // XP Container Styles
+  xpContainer: {
+    marginTop: theme.spacing.xs,
+    alignItems: 'center',
+  },
+
+  xpText: {
+    fontSize: theme.typography.xs,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginVertical: 1,
+  },
+
+  // XP Summary Styles
+  xpSummaryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: theme.spacing.md,
+  },
+
+  xpSummaryItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  xpSummaryLabel: {
+    fontSize: theme.typography.sm,
+    fontWeight: '500',
+    marginBottom: theme.spacing.xs,
+  },
+
+  xpSummaryValue: {
+    fontSize: theme.typography.lg,
+    fontWeight: '700',
   },
   
   content: {
@@ -227,43 +277,53 @@ export const styles = StyleSheet.create({
     zIndex: 1,
   },
   
-  statsSection: {
-    backgroundColor: theme.colors.secondary,
+
+
+  // Squad ID Section Styles
+  squadIdSection: {
+    backgroundColor: theme.colors.white,
     padding: theme.spacing.xl,
-    borderRadius: 0,
-    ...theme.shadows.small,
+    marginTop: theme.spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
-  
-  statsTitle: {
-    fontSize: theme.typography.xxxl,
-    fontWeight: 'bold',
-    color: theme.colors.textWhite,
-    marginBottom: theme.spacing.lg,
+
+  squadIdTitle: {
+    fontSize: theme.typography.lg,
+    fontWeight: '600',
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.md,
     textAlign: 'center',
   },
-  
-  statsGrid: {
+
+  squadIdInputContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: theme.spacing.lg,
-  },
-  
-  statItem: {
     alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+
+  squadIdInput: {
     flex: 1,
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    fontSize: theme.typography.md,
   },
-  
-  statNumber: {
-    fontSize: theme.typography.xxxxl,
-    fontWeight: 'bold',
+
+  squadIdButton: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 120,
+  },
+
+  squadIdButtonText: {
     color: theme.colors.textWhite,
-    marginBottom: theme.spacing.xs,
-  },
-  
-  statLabel: {
-    fontSize: theme.typography.lg,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
+    fontSize: theme.typography.md,
+    fontWeight: '600',
   },
 
   // Fetch Squad Data Button Styles
@@ -362,16 +422,7 @@ export const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
 
-  // Squad Performance Styles
-  squadPerformance: {
-    marginBottom: theme.spacing.md,
-  },
 
-  performanceText: {
-    fontSize: theme.typography.lg,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
-  },
 
   rankText: {
     fontSize: theme.typography.md,

@@ -19,6 +19,7 @@ export const theme = {
     success: '#10B981',
     warning: '#F59E0B',
     info: '#245F73',
+    error: '#EF4444',
     
     // UI colors
     border: '#E5E7EB',

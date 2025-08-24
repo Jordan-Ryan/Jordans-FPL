@@ -37,6 +37,9 @@ export interface FPLPlayer {
   gw3_xp?: number;
   gw4_xp?: number;
   total_3gw_xp?: number;
+  // Gameweek-specific points from FPL API
+  gameweekPoints?: number;
+
 }
 
 export interface FPLTeam {

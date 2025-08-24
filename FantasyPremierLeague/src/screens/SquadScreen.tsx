@@ -2,46 +2,37 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
-  Image,
   TextInput,
   Modal,
   Alert,
+  Dimensions,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
-import { FPLPlayer, FPLTeam } from '../types';
-import { fplApiService } from '../services/fplApi';
-import SquadManager from '../components/SquadManager';
+import { FPLPlayer } from '../types';
+import { styles } from '../styles/PointsScreen.styles';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
-import { styles } from '../styles/PointsScreen.styles';
 
-const PointsScreen: React.FC = () => {
+const { width } = Dimensions.get('window');
+
+const SquadScreen: React.FC = () => {
   const theme = useTheme();
   const { cachedData, isDataLoaded } = useData();
-  const { width } = Dimensions.get('window');
   
-  // State for FPL data
-  const [fplPlayers, setFplPlayers] = useState<FPLPlayer[]>([]);
-  const [teams, setTeams] = useState<FPLTeam[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showSquadManager, setShowSquadManager] = useState(false);
-  const [currentGameweek, setCurrentGameweek] = useState<{ id: number; name: string; deadline: string }>({ id: 1, name: 'Gameweek 1', deadline: 'TBD' });
-  const [fixtures, setFixtures] = useState<any[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
-  const [showPlayerDetails, setShowPlayerDetails] = useState(false);
-
-  // Squad data fetching state
-  const [showSquadModal, setShowSquadModal] = useState(false);
-  const [squadId, setSquadId] = useState('397418');
-  const [selectedGameweek, setSelectedGameweek] = useState(1);
+  // State for squad data
+  const [players, setPlayers] = useState<FPLPlayer[]>([]);
+  const [squadId, setSquadId] = useState('397418'); // Default squad ID
   const [squadLoading, setSquadLoading] = useState(false);
   const [squadDataFetched, setSquadDataFetched] = useState(false);
-  const [players, setPlayers] = useState<FPLPlayer[]>([]);
+  const [showSquadModal, setShowSquadModal] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
+  const [showPlayerDetails, setShowPlayerDetails] = useState(false);
   
   // Squad performance data
   const [squadPerformance, setSquadPerformance] = useState<{
@@ -57,70 +48,39 @@ const PointsScreen: React.FC = () => {
     };
   }>({});
 
-  // Fallback function to fetch data if no cache
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch current gameweek and FPL data
-      const [gameweek, playersData, teamsData, fixturesData] = await Promise.all([
-        fplApiService.getCurrentGameweek(),
-        fplApiService.fetchAllPlayers(),
-        fplApiService.fetchAllTeams(),
-        fplApiService.fetchFixturesData(),
-      ]);
-      
-      setCurrentGameweek(gameweek);
-      setFplPlayers(playersData);
-      setTeams(teamsData);
-      setFixtures(fixturesData);
-      setSelectedGameweek(gameweek.id);
-      
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (cachedData && isDataLoaded) {
-      // Use cached data
-      console.log('📦 Using cached data for Points screen');
-      setFplPlayers(cachedData.fplPlayers);
-      setTeams(cachedData.teams);
-      setFixtures(cachedData.fixtures);
-      setCurrentGameweek(cachedData.currentGameweek);
-      setSelectedGameweek(cachedData.currentGameweek.id);
-    } else if (!isDataLoaded) {
-      // Still loading
-      console.log('⏳ Data still loading...');
-    } else {
-      // Fallback: fetch data if no cache
-      console.log('⚠️ No cached data, fetching from API');
-      fetchData();
-    }
-  }, [cachedData, isDataLoaded]);
+  // Use current gameweek as base, but allow navigation between 3 gameweeks
+  const baseGameweek = cachedData?.currentGameweek?.id || 1;
+  const [selectedGameweek, setSelectedGameweek] = useState(baseGameweek + 1);
+  
+  // Available gameweeks to view (next 3 gameweeks from current)
+  const availableGameweeks = [baseGameweek + 1, baseGameweek + 2, baseGameweek + 3];
 
   // Auto-fetch squad once FPL data is present
   useEffect(() => {
-    if (fplPlayers.length > 0 && !squadDataFetched && !squadLoading && selectedGameweek > 0) {
-      console.log('🚀 Auto-fetching squad for GW', selectedGameweek);
-      fetchSquadData(selectedGameweek);
+    if (cachedData?.fplPlayers?.length > 0 && !squadDataFetched && !squadLoading && baseGameweek > 0) {
+      console.log('🚀 Auto-fetching base gameweek squad for GW', baseGameweek);
+      fetchSquadData(baseGameweek);
     }
-  }, [fplPlayers.length, selectedGameweek]);
+  }, [cachedData?.fplPlayers?.length, baseGameweek]);
 
-  // Auto-fetch squad data when gameweek changes (if we already have squad data)
-  useEffect(() => {
-    if (fplPlayers.length > 0 && squadDataFetched && selectedGameweek > 0) {
-      console.log('🔄 Gameweek changed to GW', selectedGameweek, '- fetching new squad data');
-      fetchSquadData(selectedGameweek);
+  // Navigation functions
+  const goToPreviousGameweek = () => {
+    const currentIndex = availableGameweeks.indexOf(selectedGameweek);
+    if (currentIndex > 0) {
+      setSelectedGameweek(availableGameweeks[currentIndex - 1]);
     }
-  }, [selectedGameweek]);
+  };
+
+  const goToNextGameweek = () => {
+    const currentIndex = availableGameweeks.indexOf(selectedGameweek);
+    if (currentIndex < availableGameweeks.length - 1) {
+      setSelectedGameweek(availableGameweeks[currentIndex + 1]);
+    }
+  };
 
   // Fetch squad data from FPL API
   const fetchSquadData = async (gameweek: number = selectedGameweek) => {
-    console.log('🚀 fetchSquadData called with:', { gameweek, squadId, fplPlayersLength: fplPlayers.length });
+    console.log('🚀 fetchSquadData called with:', { gameweek, squadId, fplPlayersLength: cachedData?.fplPlayers?.length });
     
     if (!squadId.trim()) {
       Alert.alert('Error', 'Please enter a valid Squad ID');
@@ -160,6 +120,7 @@ const PointsScreen: React.FC = () => {
       
       const data = squadData;
       const liveStats = liveData;
+      
       console.log('📊 FPL API responses:', { 
         squadData: {
           picksCount: data.picks?.length, 
@@ -178,7 +139,7 @@ const PointsScreen: React.FC = () => {
       if (data.picks && data.picks.length > 0) {
         // Convert FPL API data to FPLPlayer format for display
         const convertedPlayers: FPLPlayer[] = data.picks.map((pick: any) => {
-          const fplPlayer = fplPlayers.find(p => p.id === pick.element);
+          const fplPlayer = cachedData?.fplPlayers?.find(p => p.id === pick.element);
           if (fplPlayer) {
             // Get the actual points for this gameweek from the live stats
             const livePlayerStats = liveStats.elements?.find((element: any) => element.id === pick.element);
@@ -244,12 +205,6 @@ const PointsScreen: React.FC = () => {
     }
   };
 
-  // Handle squad updates from SquadManager
-  const handleSquadUpdate = (updatedSquad: any[]) => {
-    console.log('Squad updated in PointsScreen:', updatedSquad);
-    // This is no longer needed since we're using FPL API data
-  };
-
   // Function to get player points for a specific gameweek with captain doubling
   const getPlayerPointsForGameweek = (playerId: number, gameweek: number) => {
     // Find the player in the current squad to get their gameweek points
@@ -266,9 +221,35 @@ const PointsScreen: React.FC = () => {
     return basePoints;
   };
 
+  // Function to get player expected points for a specific gameweek
+  const getPlayerXP = (playerId: number, gameweek: number) => {
+    // Get the player from cached predictions
+    const playerPrediction = cachedData?.playerPredictions?.find(p => p.player_id === playerId);
+    if (!playerPrediction) return 0;
+    
+    // Map gameweek to the correct XP property for next 3 gameweeks from current
+    if (gameweek === baseGameweek + 1) {
+      return playerPrediction.gw2_xp || 0;
+    } else if (gameweek === baseGameweek + 2) {
+      return playerPrediction.gw3_xp || 0;
+    } else if (gameweek === baseGameweek + 3) {
+      return playerPrediction.gw4_xp || 0;
+    }
+    
+    return 0;
+  };
 
-
-
+  // Function to get total squad XP for a specific gameweek
+  const getSquadTotalXP = (gameweek: number) => {
+    let totalXP = 0;
+    
+    // Sum up XP for all players in the squad
+    players.forEach(player => {
+      totalXP += getPlayerXP(player.id, gameweek);
+    });
+    
+    return Math.round(totalXP * 10) / 10; // Round to 1 decimal place
+  };
 
   // Helper functions for the pitch layout
   const startingXI = players.filter(p => p.is_starter && p.id !== 0);
@@ -276,34 +257,34 @@ const PointsScreen: React.FC = () => {
 
   // Helper function to get player by ID
   const getPlayerById = (id: number): FPLPlayer | undefined => {
-    return fplPlayers.find(p => p.id === id);
+    return cachedData?.fplPlayers?.find(p => p.id === id);
   };
 
-  // Helper function to get next fixture for a player
-  const getNextFixtureForPlayer = (playerId: number): string => {
+  // Helper function to get fixture for a player in selected gameweek
+  const getFixtureForPlayer = (playerId: number, gameweek: number): string => {
     try {
       // If fixtures aren't loaded yet, show loading
-      if (fixtures.length === 0) return 'Loading...';
+      if (!cachedData?.fixtures || cachedData.fixtures.length === 0) return 'Loading...';
       
       const player = getPlayerById(playerId);
       if (!player) return 'No fixture';
       
-      // Find fixtures for this team in current or next gameweek
-      const teamFixtures = fixtures.filter(fixture => 
+      // Find fixtures for this team
+      const teamFixtures = cachedData.fixtures.filter(fixture => 
         fixture.team_h === player.team || fixture.team_a === player.team
       );
       
-      // Find the next fixture (current or next gameweek)
-      const nextFixture = teamFixtures.find(fixture => 
-        fixture.event >= currentGameweek.id
+      // Find the fixture for the specific gameweek
+      const gameweekFixture = teamFixtures.find(fixture => 
+        fixture.event === gameweek
       );
       
-      if (nextFixture) {
-        const homeTeam = teams.find(t => t.id === nextFixture.team_h);
-        const awayTeam = teams.find(t => t.id === nextFixture.team_a);
+      if (gameweekFixture) {
+        const homeTeam = cachedData?.teams?.find(t => t.id === gameweekFixture.team_h);
+        const awayTeam = cachedData?.teams?.find(t => t.id === gameweekFixture.team_a);
         
         if (homeTeam && awayTeam) {
-          const isHome = nextFixture.team_h === player.team;
+          const isHome = gameweekFixture.team_h === player.team;
           const opponent = isHome ? awayTeam : homeTeam;
           const venue = isHome ? '(H)' : '(A)';
           
@@ -313,13 +294,13 @@ const PointsScreen: React.FC = () => {
       
       return 'No fixture';
     } catch (error) {
-      console.error('Error getting next fixture for player:', error);
+      console.error('Error getting fixture for player:', error);
       return 'No fixture';
     }
   };
 
   const getTeamById = (teamId: number) => {
-    const team = teams.find(t => t.id === teamId);
+    const team = cachedData?.teams?.find(t => t.id === teamId);
     return team || { name: `Team ${teamId}`, short_name: `T${teamId}` };
   };
 
@@ -333,23 +314,23 @@ const PointsScreen: React.FC = () => {
 
   const getDefPosition = (index: number) => {
     const defenders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'DEF').length;
-    const spacing = width / defenders;
-    const left = (spacing * index) + (spacing / 2) - 36;
+    const spacing = width / (defenders + 1); // Add 1 for better spacing
+    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
     return { top: 154, left };
   };
 
   const getMidPosition = (index: number) => {
     const midfielders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'MID').length;
-    const spacing = width / midfielders;
-    const left = (spacing * index) + (spacing / 2) - 36;
-    return { top: 264, left };
+    const spacing = width / (midfielders + 1); // Add 1 for better spacing
+    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
+    return { top: 240, left };
   };
 
   const getFwdPosition = (index: number) => {
     const forwards = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'FWD').length;
-    const spacing = width / forwards;
-    const left = (spacing * index) + (spacing / 2) - 36;
-    return { top: 374, left };
+    const spacing = width / (forwards + 1); // Add 1 for better spacing
+    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
+    return { top: 326, left };
   };
 
   const handlePlayerPress = (player: FPLPlayer) => {
@@ -357,15 +338,15 @@ const PointsScreen: React.FC = () => {
     setShowPlayerDetails(true);
   };
 
-  if (showSquadManager) {
+  if (!isDataLoaded) {
     return (
-      <SquadManager 
-        onSquadUpdate={handleSquadUpdate}
-      />
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading FPL data...</Text>
+      </View>
     );
   }
 
-  if (loading) {
+  if (squadLoading) {
     return (
       <View style={styles.container}>
         <Text style={styles.loadingText}>Loading squad...</Text>
@@ -374,7 +355,7 @@ const PointsScreen: React.FC = () => {
   }
 
   // Don't render players until we have FPL data
-  if (fplPlayers.length === 0) {
+  if (!cachedData?.fplPlayers || cachedData.fplPlayers.length === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.loadingText}>Loading FPL data...</Text>
@@ -389,7 +370,7 @@ const PointsScreen: React.FC = () => {
       squadLoading,
       startingXILength: startingXI.length,
       playersLength: players.length,
-      fplPlayersLength: fplPlayers.length
+      fplPlayersLength: cachedData.fplPlayers?.length
     });
     
     return (
@@ -398,10 +379,10 @@ const PointsScreen: React.FC = () => {
           <View style={styles.squadLoadingContainer}>
             <Text style={styles.squadLoadingText}>
               {squadLoading 
-                ? '🔄 Loading squad data...' 
+                ? '🔄 Loading current gameweek squad...' 
                 : squadDataFetched 
                   ? 'Squad data loaded successfully!' 
-                  : 'Click "Fetch Squad Data" to load your FPL team'
+                  : 'Click "Fetch Squad Data" to load your current gameweek team'
               }
             </Text>
             {!squadDataFetched && !squadLoading && (
@@ -409,7 +390,7 @@ const PointsScreen: React.FC = () => {
                 style={[styles.fetchButton, { backgroundColor: theme.colors.primary, marginTop: 20 }]}
                 onPress={() => setShowSquadModal(true)}
               >
-                <Text style={styles.fetchButtonText}>📊 Load My Squad</Text>
+                <Text style={styles.fetchButtonText}>📊 Load Next GW Squad</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -420,54 +401,43 @@ const PointsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Gameweek Selector */}
+      {/* Gameweek Title with Navigation */}
       {squadDataFetched && (
         <View style={styles.gameweekSelector}>
-          {/* Gameweek Title with Navigation Arrows */}
           <View style={styles.gameweekTitleContainer}>
-                          <TouchableOpacity
-                style={[
-                  styles.titleArrowButton,
-                  (selectedGameweek <= 1 || squadLoading) && { opacity: 0.5 }
-                ]}
-                onPress={() => {
-                  if (selectedGameweek > 1 && !squadLoading) {
-                    setSelectedGameweek(selectedGameweek - 1);
-                  }
-                }}
-                disabled={selectedGameweek <= 1 || squadLoading}
-              >
-              <Text style={[styles.titleArrowText, { color: theme.colors.text }]}>←</Text>
+            <TouchableOpacity
+              style={styles.titleArrowButton}
+              onPress={goToPreviousGameweek}
+              disabled={selectedGameweek === availableGameweeks[0]}
+            >
+              <Text style={[styles.titleArrowText, { 
+                color: selectedGameweek === availableGameweeks[0] ? theme.colors.textSecondary : theme.colors.primary 
+              }]}>
+                ←
+              </Text>
             </TouchableOpacity>
             
-            <View style={styles.gameweekTitleContainer}>
-              <Text style={[styles.gameweekTitle, { color: theme.colors.text }]}>
-                Gameweek {selectedGameweek}
-              </Text>
-              {squadLoading ? (
-                <Text style={[styles.loadingIndicator, { color: theme.colors.textSecondary }]}>
-                  Loading...
-                </Text>
-              ) : squadPerformance ? (
-                <Text style={[styles.pointsIndicator, { color: theme.colors.textSecondary }]}>
-                  ({squadPerformance.totalPoints} pts)
-                </Text>
-              ) : null}
-            </View>
+            <Text style={[styles.gameweekTitle, { color: theme.colors.text }]}>
+              Gameweek {selectedGameweek}{squadLoading ? ' (Loading...)' : (() => {
+                const gameweekData = squadDataByGameweek[selectedGameweek];
+                const totalXP = getSquadTotalXP(selectedGameweek);
+                if (gameweekData) {
+                  return ` (${gameweekData.totalPoints} pts, ${totalXP} XP)`;
+                }
+                return ` (${totalXP} XP)`;
+              })()}
+            </Text>
             
-                          <TouchableOpacity
-                style={[
-                  styles.titleArrowButton,
-                  (selectedGameweek >= currentGameweek.id || squadLoading) && { opacity: 0.5 }
-                ]}
-                onPress={() => {
-                  if (selectedGameweek < currentGameweek.id && !squadLoading) {
-                    setSelectedGameweek(selectedGameweek + 1);
-                  }
-                }}
-                disabled={selectedGameweek >= currentGameweek.id || squadLoading}
-              >
-              <Text style={[styles.titleArrowText, { color: theme.colors.text }]}>→</Text>
+            <TouchableOpacity
+              style={styles.titleArrowButton}
+              onPress={goToNextGameweek}
+              disabled={selectedGameweek === availableGameweeks[availableGameweeks.length - 1]}
+            >
+              <Text style={[styles.titleArrowText, { 
+                color: selectedGameweek === availableGameweeks[availableGameweeks.length - 1] ? theme.colors.textSecondary : theme.colors.primary 
+              }]}>
+                →
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -483,7 +453,7 @@ const PointsScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-              Fetch Squad Data
+              Fetch Current Gameweek Squad
             </Text>
             
             <Text style={[styles.modalLabel, { color: theme.colors.textSecondary }]}>
@@ -538,10 +508,7 @@ const PointsScreen: React.FC = () => {
             {/* Goalkeeper */}
             <View style={[styles.playerPosition, styles.gkPosition]}>
               <TouchableOpacity 
-                style={[
-                  styles.playerCard,
-                  // The selectedPlayer state was removed, so this style is removed
-                ]}
+                style={styles.playerCard}
                 onPress={() => handlePlayerPress(startingXI[0])}
               >
                 {/* Captain/Vice-Captain Badge */}
@@ -566,15 +533,9 @@ const PointsScreen: React.FC = () => {
                   {getPlayerById(startingXI[0].id)?.web_name || 'Player'}
                 </Text>
                 
-                                  {/* Show either next fixture or points from last game */}
+                  {/* Show fixture and XP for selected gameweek */}
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {(() => {
-                      const points = getPlayerPointsForGameweek(startingXI[0].id, selectedGameweek);
-                      if (points > 0) {
-                        return `${points} pts`;
-                      }
-                      return getNextFixtureForPlayer(startingXI[0].id);
-                    })()}
+                    {getFixtureForPlayer(startingXI[0].id, selectedGameweek)} ({getPlayerXP(startingXI[0].id, selectedGameweek)} XP)
                   </Text>
               </TouchableOpacity>
             </View>
@@ -583,10 +544,7 @@ const PointsScreen: React.FC = () => {
             {startingXI.slice(1, 4).map((player, index) => (
               <View key={player.id} style={[styles.playerPosition, getDefPosition(index)]}>
                 <TouchableOpacity 
-                  style={[
-                    styles.playerCard,
-                    // The selectedPlayer state was removed, so this style is removed
-                  ]}
+                  style={styles.playerCard}
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
@@ -611,18 +569,9 @@ const PointsScreen: React.FC = () => {
                     {getPlayerById(player.id)?.web_name || 'Player'}
                   </Text>
                   
-                  {/* Show either next fixture or points from last game */}
+                  {/* Show fixture and XP for selected gameweek */}
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {(() => {
-                      const points = getPlayerPointsForGameweek(player.id, selectedGameweek);
-                      if (points > 0) {
-                        // Apply captain doubling if this player is captain
-                        const isCaptain = player.is_captain;
-                        const displayPoints = isCaptain ? points * 2 : points;
-                        return `${displayPoints} pts${isCaptain ? ' (C)' : ''}`;
-                      }
-                      return getNextFixtureForPlayer(player.id);
-                    })()}
+                    {getFixtureForPlayer(player.id, selectedGameweek)} ({getPlayerXP(player.id, selectedGameweek)} XP)
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -632,10 +581,7 @@ const PointsScreen: React.FC = () => {
             {startingXI.slice(4, 8).map((player, index) => (
               <View key={player.id} style={[styles.playerPosition, getMidPosition(index)]}>
                 <TouchableOpacity 
-                  style={[
-                    styles.playerCard,
-                    // The selectedPlayer state was removed, so this style is removed
-                  ]}
+                  style={styles.playerCard}
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
@@ -660,15 +606,9 @@ const PointsScreen: React.FC = () => {
                     {getPlayerById(player.id)?.web_name || 'Player'}
                   </Text>
                   
-                  {/* Show either next fixture or points from last game */}
+                  {/* Show fixture and XP for selected gameweek */}
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {(() => {
-                      const points = getPlayerPointsForGameweek(player.id, selectedGameweek);
-                      if (points > 0) {
-                        return `${points} pts`;
-                      }
-                      return getNextFixtureForPlayer(player.id);
-                    })()}
+                    {getFixtureForPlayer(player.id, selectedGameweek)} ({getPlayerXP(player.id, selectedGameweek)} XP)
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -678,10 +618,7 @@ const PointsScreen: React.FC = () => {
             {startingXI.slice(8, 11).map((player, index) => (
               <View key={player.id} style={[styles.playerPosition, getFwdPosition(index)]}>
                 <TouchableOpacity 
-                  style={[
-                    styles.playerCard,
-                    // The selectedPlayer state was removed, so this style is removed
-                  ]}
+                  style={styles.playerCard}
                   onPress={() => handlePlayerPress(player)}
                 >
                   {/* Captain/Vice-Captain Badge */}
@@ -706,15 +643,9 @@ const PointsScreen: React.FC = () => {
                     {getPlayerById(player.id)?.web_name || 'Player'}
                   </Text>
                   
-                  {/* Show either next fixture or points from last game */}
+                  {/* Show fixture and XP for selected gameweek */}
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {(() => {
-                      const points = getPlayerPointsForGameweek(player.id, selectedGameweek);
-                      if (points > 0) {
-                        return `${points} pts`;
-                      }
-                      return getNextFixtureForPlayer(player.id);
-                    })()}
+                    {getFixtureForPlayer(player.id, selectedGameweek)} ({getPlayerXP(player.id, selectedGameweek)} XP)
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -729,10 +660,7 @@ const PointsScreen: React.FC = () => {
             {benchPlayers.map((player, index) => (
               <TouchableOpacity 
                 key={player.id} 
-                style={[
-                  styles.playerCard, // Use same card style as playing field
-                  // The selectedPlayer state was removed, so this style is removed
-                ]}
+                style={styles.playerCard}
                 onPress={() => handlePlayerPress(player)}
               >
                 {/* Captain/Vice-Captain Badge */}
@@ -757,24 +685,53 @@ const PointsScreen: React.FC = () => {
                   {getPlayerById(player.id)?.web_name || 'Player'}
                 </Text>
                 
-                {/* Show either next fixture or points from last game */}
+                {/* Show fixture and XP for selected gameweek */}
                 <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                  {(() => {
-                    const points = getPlayerPointsForGameweek(player.id, selectedGameweek);
-                    if (points > 0) {
-                      return `${points} pts`;
-                    }
-                    return getNextFixtureForPlayer(player.id);
-                  })()}
+                  {getFixtureForPlayer(player.id, selectedGameweek)} ({getPlayerXP(player.id, selectedGameweek)} XP)
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
+        {/* Squad Summary Section */}
+        <View style={[styles.squadIdSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.textSecondary }]}>
+          <Text style={[styles.squadIdTitle, { color: theme.colors.text }]}>
+            📊 Squad Expected Points Summary
+          </Text>
+          <View style={styles.xpSummaryContainer}>
+            <View style={styles.xpSummaryItem}>
+              <Text style={[styles.xpSummaryLabel, { color: theme.colors.textSecondary }]}>
+                GW{baseGameweek + 1} Total XP
+              </Text>
+              <Text style={[styles.xpSummaryValue, { color: theme.colors.primary }]}>
+                {getSquadTotalXP(baseGameweek + 1)} XP
+              </Text>
+            </View>
+            <View style={styles.xpSummaryItem}>
+              <Text style={[styles.xpSummaryLabel, { color: theme.colors.textSecondary }]}>
+                GW{baseGameweek + 2} Total XP
+              </Text>
+              <Text style={[styles.xpSummaryValue, { color: theme.colors.primary }]}>
+                {getSquadTotalXP(baseGameweek + 2)} XP
+              </Text>
+            </View>
+            <View style={styles.xpSummaryItem}>
+              <Text style={[styles.xpSummaryLabel, { color: theme.colors.primary }]}>
+                GW{baseGameweek + 3} Total XP
+              </Text>
+              <Text style={[styles.xpSummaryValue, { color: theme.colors.primary }]}>
+                {getSquadTotalXP(baseGameweek + 3)} XP
+              </Text>
+            </View>
+          </View>
+        </View>
+
         {/* Squad ID Input Section */}
         <View style={styles.squadIdSection}>
-          <Text style={styles.squadIdTitle}>Change Squad ID</Text>
+          <Text style={[styles.squadIdTitle, { color: theme.colors.text }]}>
+            Squad ID
+          </Text>
           <View style={styles.squadIdInputContainer}>
             <TextInput
               style={[styles.squadIdInput, { 
@@ -784,38 +741,35 @@ const PointsScreen: React.FC = () => {
               }]}
               value={squadId}
               onChangeText={setSquadId}
-              placeholder="Enter your Squad ID (e.g., 397418)"
+              placeholder="Enter Squad ID"
               placeholderTextColor={theme.colors.textSecondary}
               keyboardType="numeric"
             />
             <TouchableOpacity
               style={[styles.squadIdButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => fetchSquadData(selectedGameweek)}
+                              onPress={() => fetchSquadData(selectedGameweek)}
               disabled={squadLoading}
             >
               <Text style={styles.squadIdButtonText}>
-                {squadLoading ? 'Fetching...' : 'Update Squad'}
+                {squadLoading ? 'Updating...' : 'Update Squad'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
-
       </ScrollView>
 
       {/* Player Details Modal */}
-      {selectedPlayer && getPlayerById(selectedPlayer.id) && (
-        <PlayerDetailsModal
-          visible={showPlayerDetails}
-          onClose={() => {
-            setShowPlayerDetails(false);
-            setSelectedPlayer(null);
-          }}
-          fplPlayer={getPlayerById(selectedPlayer.id)!}
-          team={teams.find(t => t.id === (getPlayerById(selectedPlayer.id)?.team || 0)) || null}
-        />
-      )}
+      <PlayerDetailsModal
+        visible={showPlayerDetails}
+        player={selectedPlayer}
+        onClose={() => {
+          setShowPlayerDetails(false);
+          setSelectedPlayer(null);
+        }}
+        fplPlayer={selectedPlayer}
+      />
     </View>
   );
 };
 
-export default PointsScreen; 
+export default SquadScreen;

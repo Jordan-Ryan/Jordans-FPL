@@ -13,7 +13,9 @@ import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
 import { fplApiService } from '../services/fplApi';
 import PlayerPhoto from '../components/PlayerPhoto';
+import PlayerDetailsModal from '../components/PlayerDetailsModal';
 import { styles } from '../styles/Best11Screen.styles';
+import { FPLPlayer, FPLTeam } from '../types';
 
 const Best11Screen: React.FC = () => {
   const theme = useTheme();
@@ -23,20 +25,28 @@ const Best11Screen: React.FC = () => {
   const [currentGameweek, setCurrentGameweek] = useState(2);
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
+  const [showPlayerDetails, setShowPlayerDetails] = useState(false);
+
+
+  // Get current team data from cache only (moved up to fix temporal dead zone)
+  const currentTeam = cachedData?.best11Teams?.[`gw${currentGameweek}` as keyof typeof cachedData.best11Teams];
+
+
 
   useEffect(() => {
-    if (cachedData && isDataLoaded) {
-      console.log('📦 Using cached data for Best 11 screen');
-      setTeams(cachedData.teams);
+    console.log('🔍 Best11Screen: useEffect triggered', {
+      hasCachedData: !!cachedData,
+      hasBest11Teams: !!cachedData?.best11Teams,
+      best11TeamsKeys: cachedData?.best11Teams ? Object.keys(cachedData.best11Teams) : [],
+      currentGameweek
+    });
+    
+    if (cachedData && cachedData.best11Teams) {
+      // The component will automatically use the cached data
       setLoading(false);
-    } else if (!isDataLoaded) {
-      console.log('⏳ Data still loading...');
-    } else {
-      // Fallback: fetch teams if no cache
-      console.log('⚠️ No cached data, fetching teams from API');
-      fetchTeams();
     }
-  }, [cachedData, isDataLoaded]);
+  }, [cachedData, currentGameweek]);
 
   const fetchTeams = async () => {
     try {
@@ -50,9 +60,28 @@ const Best11Screen: React.FC = () => {
     }
   };
 
-  // Get current team data from cache only
-  const currentTeam = cachedData?.best11Teams?.[`gw${currentGameweek}` as keyof typeof cachedData.best11Teams];
   const gameweekOptions = [2, 3, 4];
+
+  // Use the current team directly
+  const displayTeam = currentTeam;
+
+  // Debug: Log team data to see what we're working with
+  useEffect(() => {
+    if (displayTeam) {
+      // Check if starting XI is sorted by expected points
+      if (displayTeam.starting_xi && displayTeam.starting_xi.length > 0) {
+        const xpField = `gw${currentGameweek}_xp` as keyof typeof displayTeam.starting_xi[0];
+        const isSorted = displayTeam.starting_xi.every((player: any, index: number) => {
+          if (index === 0) return true;
+          const currentXP = player[xpField] as number;
+          const previousXP = displayTeam.starting_xi[index - 1][xpField] as number;
+          return currentXP <= previousXP; // Should be descending order
+        });
+      }
+    }
+  }, [displayTeam, currentGameweek]);
+
+
 
   if (!isDataLoaded) {
     return (
@@ -84,7 +113,7 @@ const Best11Screen: React.FC = () => {
     );
   }
 
-  if (!currentTeam) {
+  if (!displayTeam) {
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>
@@ -99,6 +128,20 @@ const Best11Screen: React.FC = () => {
     return team || { name: `Team ${teamId}`, short_name: `T${teamId}` };
   };
 
+  // Helper function to get player by ID from cached data
+  const getPlayerById = (id: number): FPLPlayer | undefined => {
+    return cachedData?.fplPlayers?.find(p => p.id === id);
+  };
+
+  // Handle player press to show details
+  const handlePlayerPress = (player: any) => {
+    const fplPlayer = getPlayerById(player.player_id);
+    if (fplPlayer) {
+      setSelectedPlayer(fplPlayer);
+      setShowPlayerDetails(true);
+    }
+  };
+
   const getPositionName = (position: number) => {
     if (position === 1) return 'GK';
     if (position >= 2 && position <= 4) return 'DEF';
@@ -108,21 +151,21 @@ const Best11Screen: React.FC = () => {
   };
 
   const getDefPosition = (index: number) => {
-    const defenders = currentTeam.starting_xi.filter((p: any) => p.position === 'DEF').length;
+    const defenders = displayTeam.starting_xi.filter((p: any) => p.position === 'DEF').length;
     const spacing = width / defenders;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 154, left };
   };
 
   const getMidPosition = (index: number) => {
-    const midfielders = currentTeam.starting_xi.filter((p: any) => p.position === 'MID').length;
+    const midfielders = displayTeam.starting_xi.filter((p: any) => p.position === 'MID').length;
     const spacing = width / midfielders;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 264, left };
   };
 
   const getFwdPosition = (index: number) => {
-    const forwards = currentTeam.starting_xi.filter((p: any) => p.position === 'FWD').length;
+    const forwards = displayTeam.starting_xi.filter((p: any) => p.position === 'FWD').length;
     const spacing = width / forwards;
     const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 374, left };
@@ -132,17 +175,17 @@ const Best11Screen: React.FC = () => {
     if (player.position === 'GK') {
       return { top: 44, left: (width / 2) - 36 };
     } else if (player.position === 'DEF') {
-      const defIndex = currentTeam.starting_xi
+      const defIndex = displayTeam.starting_xi
         .filter((p: any) => p.position === 'DEF')
         .findIndex((p: any) => p.player_id === player.player_id);
       return getDefPosition(defIndex);
     } else if (player.position === 'MID') {
-      const midIndex = currentTeam.starting_xi
+      const midIndex = displayTeam.starting_xi
         .filter((p: any) => p.position === 'MID')
         .findIndex((p: any) => p.player_id === player.player_id);
       return getMidPosition(midIndex);
     } else if (player.position === 'FWD') {
-      const fwdIndex = currentTeam.starting_xi
+      const fwdIndex = displayTeam.starting_xi
         .filter((p: any) => p.position === 'FWD')
         .findIndex((p: any) => p.player_id === player.player_id);
       return getFwdPosition(fwdIndex);
@@ -151,7 +194,7 @@ const Best11Screen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -161,13 +204,20 @@ const Best11Screen: React.FC = () => {
             </Text>
             <View style={styles.teamInfo}>
               <Text style={styles.formationText}>
-                Formation: {currentTeam.formation}
+                Formation: {displayTeam.formation}
               </Text>
               <Text style={styles.costText}>
-                Total Cost: £{currentTeam.total_cost}m
+                Total Cost: £{displayTeam.total_cost}m
               </Text>
               <Text style={styles.pointsText}>
-                Expected Points: {currentTeam.total_expected_points}
+                Starting XI Expected Points: {displayTeam.starting_xi.reduce((total: number, player: any) => 
+                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                ).toFixed(1)}
+              </Text>
+              <Text style={styles.pointsText}>
+                Bench Expected Points: {displayTeam.bench.reduce((total: number, player: any) => 
+                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                ).toFixed(1)}
               </Text>
             </View>
           </View>
@@ -175,7 +225,7 @@ const Best11Screen: React.FC = () => {
 
         {/* Gameweek Selector */}
         <View style={styles.gameweekSelector}>
-          <Text style={[styles.gameweekLabel, { color: theme.colors.textSecondary }]}>
+          <Text style={styles.gameweekLabel}>
             Select Gameweek:
           </Text>
           <ScrollView 
@@ -188,19 +238,21 @@ const Best11Screen: React.FC = () => {
                 key={gw}
                 style={[
                   styles.gameweekButton,
-                  currentGameweek === gw && { backgroundColor: theme.colors.primary }
+                  currentGameweek === gw && { backgroundColor: '#245F73' }
                 ]}
                 onPress={() => setCurrentGameweek(gw)}
               >
                 <Text style={[
                   styles.gameweekButtonText,
-                  currentGameweek === gw && { color: theme.colors.surface }
+                  currentGameweek === gw && { color: '#FFFFFF' }
                 ]}>
                   GW{gw}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
+          
+
         </View>
       </View>
 
@@ -216,18 +268,24 @@ const Best11Screen: React.FC = () => {
           {/* Starting XI */}
           <View style={styles.formation}>
             {/* Goalkeeper */}
-            {currentTeam.starting_xi.filter((p: any) => p.position === 'GK').map((player: any, index: number) => (
+            {displayTeam.starting_xi.filter((p: any) => p.position === 'GK').map((player: any, index: number) => (
               <View key={player.player_id} style={[styles.playerPosition, getPlayerPosition(player, index)]}>
-                <View style={styles.playerCard}>
+                <TouchableOpacity style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                   {/* Captain/Vice-Captain Badge */}
-                  {player.player_id === currentTeam.captain?.player_id && (
-                    <View style={styles.captainBadge}>
-                      <Text style={styles.captainText}>C</Text>
+                  {player.player_id === displayTeam.captain?.player_id && (
+                    <View style={[styles.captainBadge, { 
+                      backgroundColor: '#245F73',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.captainText, { color: '#FFFFFF' }]}>C</Text>
                     </View>
                   )}
-                  {player.player_id === currentTeam.vice_captain?.player_id && (
-                    <View style={styles.viceCaptainBadge}>
-                      <Text style={styles.viceCaptainText}>VC</Text>
+                  {player.player_id === displayTeam.vice_captain?.player_id && (
+                    <View style={[styles.viceCaptainBadge, { 
+                      backgroundColor: '#733E24',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.viceCaptainText, { color: '#FFFFFF' }]}>VC</Text>
                     </View>
                   )}
                   
@@ -244,23 +302,29 @@ const Best11Screen: React.FC = () => {
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
                     {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             ))}
 
             {/* Defenders */}
-            {currentTeam.starting_xi.filter((p: any) => p.position === 'DEF').map((player: any, index: number) => (
+            {displayTeam.starting_xi.filter((p: any) => p.position === 'DEF').map((player: any, index: number) => (
               <View key={player.player_id} style={[styles.playerPosition, getPlayerPosition(player, index)]}>
-                <View style={styles.playerCard}>
+                <TouchableOpacity style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                   {/* Captain/Vice-Captain Badge */}
-                  {player.player_id === currentTeam.captain?.player_id && (
-                    <View style={styles.captainBadge}>
-                      <Text style={styles.captainText}>C</Text>
+                  {player.player_id === displayTeam.captain?.player_id && (
+                    <View style={[styles.captainBadge, { 
+                      backgroundColor: '#245F73',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.captainText, { color: '#FFFFFF' }]}>C</Text>
                     </View>
                   )}
-                  {player.player_id === currentTeam.vice_captain?.player_id && (
-                    <View style={styles.viceCaptainBadge}>
-                      <Text style={styles.viceCaptainText}>VC</Text>
+                  {player.player_id === displayTeam.vice_captain?.player_id && (
+                    <View style={[styles.viceCaptainBadge, { 
+                      backgroundColor: '#733E24',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.viceCaptainText, { color: '#FFFFFF' }]}>VC</Text>
                     </View>
                   )}
                   
@@ -277,23 +341,29 @@ const Best11Screen: React.FC = () => {
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
                     {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             ))}
 
             {/* Midfielders */}
-            {currentTeam.starting_xi.filter((p: any) => p.position === 'MID').map((player: any, index: number) => (
+            {displayTeam.starting_xi.filter((p: any) => p.position === 'MID').map((player: any, index: number) => (
               <View key={player.player_id} style={[styles.playerPosition, getPlayerPosition(player, index)]}>
-                <View style={styles.playerCard}>
+                <TouchableOpacity style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                   {/* Captain/Vice-Captain Badge */}
-                  {player.player_id === currentTeam.captain?.player_id && (
-                    <View style={styles.captainBadge}>
-                      <Text style={styles.captainText}>C</Text>
+                  {player.player_id === displayTeam.captain?.player_id && (
+                    <View style={[styles.captainBadge, { 
+                      backgroundColor: '#245F73',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.captainText, { color: '#FFFFFF' }]}>C</Text>
                     </View>
                   )}
-                  {player.player_id === currentTeam.vice_captain?.player_id && (
-                    <View style={styles.viceCaptainBadge}>
-                      <Text style={styles.viceCaptainText}>VC</Text>
+                  {player.player_id === displayTeam.vice_captain?.player_id && (
+                    <View style={[styles.viceCaptainBadge, { 
+                      backgroundColor: '#733E24',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.viceCaptainText, { color: '#FFFFFF' }]}>VC</Text>
                     </View>
                   )}
                   
@@ -310,23 +380,28 @@ const Best11Screen: React.FC = () => {
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
                     {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             ))}
 
             {/* Forwards */}
-            {currentTeam.starting_xi.filter((p: any) => p.position === 'FWD').map((player: any, index: number) => (
+            {displayTeam.starting_xi.filter((p: any) => p.position === 'FWD').map((player: any, index: number) => (
               <View key={player.player_id} style={[styles.playerPosition, getPlayerPosition(player, index)]}>
-                <View style={styles.playerCard}>
+                <TouchableOpacity style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                   {/* Captain/Vice-Captain Badge */}
-                  {player.player_id === currentTeam.captain?.player_id && (
-                    <View style={styles.captainBadge}>
-                      <Text style={styles.captainText}>C</Text>
+                  {player.player_id === displayTeam.captain?.player_id && (
+                    <View style={[styles.captainBadge, { 
+                      backgroundColor: '#245F73',
+                      borderColor: '#FFFFFF' 
+                    }]}>
+                      <Text style={[styles.captainText, { color: '#FFFFFF' }]}>C</Text>
                     </View>
                   )}
-                  {player.player_id === currentTeam.vice_captain?.player_id && (
-                    <View style={styles.viceCaptainBadge}>
-                      <Text style={styles.viceCaptainText}>VC</Text>
+                  {player.player_id === displayTeam.vice_captain?.player_id && (
+                    <View style={[styles.viceCaptainBadge, { 
+                      backgroundColor: '#733E24',
+                      borderColor: '#FFFFFF' }]}>
+                      <Text style={[styles.viceCaptainText, { color: '#FFFFFF' }]}>VC</Text>
                     </View>
                   )}
                   
@@ -343,7 +418,7 @@ const Best11Screen: React.FC = () => {
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
                     {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -353,8 +428,8 @@ const Best11Screen: React.FC = () => {
         <View style={styles.benchSection}>
           <Text style={styles.benchTitle}>Bench</Text>
           <View style={styles.benchContainer}>
-            {currentTeam.bench.map((player: any, index: number) => (
-              <View key={player.player_id} style={styles.playerCard}>
+            {displayTeam.bench.map((player: any, index: number) => (
+              <TouchableOpacity key={player.player_id} style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                 <PlayerPhoto 
                   playerId={player.player_id}
                   width={55}
@@ -368,7 +443,7 @@ const Best11Screen: React.FC = () => {
                 <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
                   {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -378,25 +453,58 @@ const Best11Screen: React.FC = () => {
           <Text style={styles.statsTitle}>Team Overview</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{currentTeam.starting_xi.length}</Text>
+              <Text style={styles.statNumber}>{displayTeam.starting_xi.length}</Text>
               <Text style={styles.statLabel}>Starting XI</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{currentTeam.bench.length}</Text>
+              <Text style={styles.statNumber}>{displayTeam.bench.length}</Text>
               <Text style={styles.statLabel}>Bench</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{currentTeam.formation}</Text>
+              <Text style={styles.statNumber}>{displayTeam.formation}</Text>
               <Text style={styles.statLabel}>Formation</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>£{currentTeam.total_cost}m</Text>
+              <Text style={styles.statNumber}>£{displayTeam.total_cost}m</Text>
               <Text style={styles.statLabel}>Total Cost</Text>
+            </View>
+          </View>
+          
+          {/* Expected Points Breakdown */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {displayTeam.starting_xi.reduce((total: number, player: any) => 
+                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                ).toFixed(1)}
+              </Text>
+              <Text style={styles.statLabel}>Starting XI XP</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {displayTeam.bench.reduce((total: number, player: any) => 
+                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                ).toFixed(1)}
+              </Text>
+              <Text style={styles.statLabel}>Bench XP</Text>
             </View>
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Player Details Modal */}
+      {selectedPlayer && getPlayerById(selectedPlayer.id) && (
+        <PlayerDetailsModal
+          visible={showPlayerDetails}
+          onClose={() => {
+            setShowPlayerDetails(false);
+            setSelectedPlayer(null);
+          }}
+          fplPlayer={getPlayerById(selectedPlayer.id)!}
+          team={teams.find(t => t.id === (getPlayerById(selectedPlayer.id)?.team || 0)) || null}
+        />
+      )}
+    </View>
   );
 };
 

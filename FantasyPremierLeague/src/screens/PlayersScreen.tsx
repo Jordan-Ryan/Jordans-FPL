@@ -54,6 +54,7 @@ const PlayersScreen: React.FC = () => {
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
+  const [displayedPlayersCount, setDisplayedPlayersCount] = useState(50);
 
   // Use cached data when available
   useEffect(() => {
@@ -66,11 +67,17 @@ const PlayersScreen: React.FC = () => {
       // Use premerged model directly - no need to merge here
       if (cachedData.playersModel && cachedData.playersModel.length > 0) {
         console.log('✅ Using pre-merged playersModel with XP data');
-        setPlayers(cachedData.playersModel as FPLPlayer[]);
+        
+        // Don't set players state - we'll use pre-filtered data directly
+        console.log('✅ Data loaded, will use pre-filtered data directly');
+        setPlayers([]); // Empty array to avoid unnecessary processing
+        
         setTeams(cachedData.teams);
         setFixtures(cachedData.fixtures);
         setCurrentGameweek(cachedData.currentGameweek.id);
         setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
+        
+        // Set loading to false immediately since we have pre-filtered data
         setLoading(false);
       } else {
         console.log('⚠️ playersModel is empty, waiting for data to load...');
@@ -123,8 +130,59 @@ const PlayersScreen: React.FC = () => {
     return positions[elementType - 1] || '?';
   };
 
-  // Filter and sort players
+  // Filter and sort players - optimized to use pre-filtered data when possible
   const filteredAndSortedPlayers = useMemo(() => {
+    const startTime = performance.now();
+    
+    // Always try to use pre-filtered data first for maximum performance
+    if (cachedData?.processedPlayerData?.preFiltered?.default) {
+      // If no filters are active and we're sorting by total_3gw_xp (default), use pre-filtered data
+      if (!searchQuery && 
+          filterConfig.position === 'All' && 
+          filterConfig.maxPrice === null && 
+          filterConfig.club === 'All clubs' && 
+          sortConfig.key === 'total_3gw_xp' && 
+          sortConfig.direction === 'desc') {
+        const endTime = performance.now();
+        console.log(`🚀 Using pre-filtered default data for instant loading (${(endTime - startTime).toFixed(2)}ms)`);
+        return cachedData.processedPlayerData.preFiltered.default;
+      }
+
+      // If only position filter is active, use pre-filtered position data
+      if (!searchQuery && 
+          filterConfig.maxPrice === null && 
+          filterConfig.club === 'All clubs' && 
+          sortConfig.key === 'total_3gw_xp' && 
+          sortConfig.direction === 'desc') {
+        const positionKey = filterConfig.position.toLowerCase();
+        if (cachedData.processedPlayerData.preFiltered.positionFiltered?.[positionKey]) {
+          console.log(`🚀 Using pre-filtered ${positionKey} data for instant loading`);
+          return cachedData.processedPlayerData.preFiltered.positionFiltered[positionKey];
+        }
+      }
+
+      // If only price filter is active, use pre-filtered price data
+      if (!searchQuery && 
+          filterConfig.position === 'All' && 
+          filterConfig.club === 'All clubs' && 
+          sortConfig.key === 'total_3gw_xp' && 
+          sortConfig.direction === 'desc') {
+        const priceKey = `≤ £${filterConfig.maxPrice}m`;
+        if (filterConfig.maxPrice !== null && cachedData.processedPlayerData.preFiltered.priceFiltered?.[priceKey]) {
+          console.log(`🚀 Using pre-filtered ${priceKey} data for instant loading`);
+          return cachedData.processedPlayerData.preFiltered.priceFiltered[priceKey];
+        }
+      }
+    }
+
+    // If no pre-filtered data available or complex filters, use players state
+    if (players.length === 0) {
+      console.log('⚠️ No players data available, returning empty array');
+      return [];
+    }
+
+    // Fallback to dynamic filtering for complex combinations
+    console.log('🔄 Using dynamic filtering for complex filter combination');
     let filtered = players.filter(player => {
       // Search filter
       if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -244,7 +302,7 @@ const PlayersScreen: React.FC = () => {
     });
 
     return filtered;
-  }, [players, searchQuery, filterConfig, sortConfig]);
+  }, [players, searchQuery, filterConfig, sortConfig, cachedData]);
 
   // Update displayed players when filtered results change (now shows all players)
   useEffect(() => {
@@ -519,37 +577,7 @@ const PlayersScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* Best 11 Section */}
-      {cachedData?.best11Teams && (
-        <View style={[styles.best11Section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.textSecondary }]}>
-          <Text style={[styles.best11Title, { color: theme.colors.text }]}>
-            🏆 Best 11 Teams (99.7% Accuracy)
-          </Text>
-          <View style={styles.best11Grid}>
-            {[2, 3, 4].map(gw => {
-              const team = cachedData.best11Teams[`gw${gw}` as keyof typeof cachedData.best11Teams];
-              if (!team) return null;
-              
-              return (
-                <View key={gw} style={styles.best11Card}>
-                  <Text style={[styles.best11CardTitle, { color: theme.colors.text }]}>
-                    GW{gw}
-                  </Text>
-                  <Text style={[styles.best11CardFormation, { color: theme.colors.textSecondary }]}>
-                    {team.formation}
-                  </Text>
-                  <Text style={[styles.best11CardPoints, { color: theme.colors.primary }]}>
-                    {team.total_expected_points} XP
-                  </Text>
-                  <Text style={[styles.best11CardCost, { color: theme.colors.textSecondary }]}>
-                    £{team.total_cost}m
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
+
 
       {/* Horizontal Scrollable Table */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -680,7 +708,7 @@ const PlayersScreen: React.FC = () => {
               onPress={() => handleSort('gw2_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 2} XP {getSortIndicator('gw2_xp')}
+                GW{currentGameweek + 1} XP {getSortIndicator('gw2_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -689,7 +717,7 @@ const PlayersScreen: React.FC = () => {
               onPress={() => handleSort('gw3_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 3} XP {getSortIndicator('gw3_xp')}
+                GW{currentGameweek + 2} XP {getSortIndicator('gw3_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -698,7 +726,7 @@ const PlayersScreen: React.FC = () => {
               onPress={() => handleSort('gw4_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 4} XP {getSortIndicator('gw4_xp')}
+                GW{currentGameweek + 3} XP {getSortIndicator('gw4_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -720,7 +748,7 @@ const PlayersScreen: React.FC = () => {
             style={styles.playersList} 
             showsVerticalScrollIndicator={false}
           >
-            {filteredAndSortedPlayers.map((player, index) => (
+            {filteredAndSortedPlayers.slice(0, displayedPlayersCount).map((player: any, index: number) => (
               <TouchableOpacity 
                 key={player.id} 
                 style={[
@@ -911,6 +939,17 @@ const PlayersScreen: React.FC = () => {
               </TouchableOpacity>
             ))}
             
+            {/* Load More Button */}
+            {displayedPlayersCount < filteredAndSortedPlayers.length && (
+              <TouchableOpacity
+                style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => setDisplayedPlayersCount(prev => Math.min(prev + 50, filteredAndSortedPlayers.length))}
+              >
+                <Text style={[styles.loadMoreText, { color: 'white' }]}>
+                  Load More ({filteredAndSortedPlayers.length - displayedPlayersCount} remaining)
+                </Text>
+              </TouchableOpacity>
+            )}
 
           </ScrollView>
         </View>

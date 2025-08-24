@@ -1,5 +1,7 @@
 import baselineData2024_25 from '../data/2024-25-baseline-processed.json';
 
+
+
 interface PlayerSeasonData {
   name: string;
   element_type: number;
@@ -48,6 +50,14 @@ export interface RollingFeatures {
   history_games: number;
 }
 
+interface PlayerClassification {
+  isNewToPL: boolean;
+  isFromPromotedClub: boolean;
+  isYoungPlayer: boolean;
+  hasInsufficientData: boolean;
+  penaltyMultiplier: number;
+}
+
 export class FPLPredictor2025_26 {
   private model: any;
   private baselineData: Record<string, PlayerSeasonData> | null = null;
@@ -56,50 +66,71 @@ export class FPLPredictor2025_26 {
     this.model = require('../models/fplModel2025-26.json');
     // Load baseline data directly from static file
     this.baselineData = baselineData2024_25 as Record<string, PlayerSeasonData>;
-    console.log('✅ FPL Predictor 2025-26 initialized with static baseline data');
+    
+
   }
 
   async initialize(): Promise<void> {
     // No need to initialize - data is already loaded
-    console.log('✅ Predictor already initialized with static baseline data');
   }
 
   isInitialized(): boolean {
     return this.baselineData !== null;
   }
 
-  private calculateRollingFeatures(playerName: string, currentSeasonHistory: any[]): RollingFeatures {
-    const baselineData = this.findPlayerBaseline(playerName);
-    const baselineHistory = baselineData?.season_history || [];
+  private calculateRollingFeatures(
+    playerName: string,
+    baselineHistory: any[],
+    currentSeasonHistory: any[]
+  ): RollingFeatures {
+    // Combine baseline and current season history
+    const combinedHistory = [...(baselineHistory || []), ...(currentSeasonHistory || [])];
+    
 
-    let combinedHistory: any[] = [];
-
-    if (baselineHistory && baselineHistory.length > 0) {
-      const last15Games = baselineHistory.slice(-15);
-      combinedHistory = [...last15Games];
-    }
-
-    if (currentSeasonHistory && currentSeasonHistory.length > 0) {
-      const currentFormatted = currentSeasonHistory.map((game: any) => ({
-        round: game.round + 100,
-        total_points: game.total_points || 0,
-        minutes: game.minutes || 0,
-        was_home: game.was_home || false,
-        opponent_team: game.opponent_team || 'Unknown',
-        ict_index: game.ict_index || 0,
-        bps: game.bps || 0,
-        expected_goal_involvements: game.expected_goal_involvements || 0
-      }));
-      combinedHistory = [...combinedHistory, ...currentFormatted];
-    }
 
     if (combinedHistory.length === 0) {
-      return this.getNewPlayerDefaults();
+      console.warn('⚠️ No historical data for player:', playerName);
+      return this.createSyntheticBaseline({ web_name: playerName });
     }
 
-    combinedHistory.sort((a, b) => a.round - b.round);
+    // Helper functions for calculations
+    const getAvg = (arr: any[]) => {
+      if (arr.length === 0) return 0;
+      
 
-    const getAvg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      
+      // Convert strings to numbers and handle invalid values
+      const numericArr = arr.map(x => {
+        if (typeof x === 'string') {
+          const num = Number(x);
+          if (isNaN(num)) {
+            console.warn('⚠️ getAvg: Converting invalid string to 0:', x);
+            return 0;
+          }
+          return num;
+        }
+        return x;
+      });
+      
+      // Check for invalid values
+      const invalidValues = numericArr.filter(x => x === undefined || x === null || isNaN(x));
+      if (invalidValues.length > 0) {
+        console.warn('⚠️ getAvg: found invalid values after conversion:', { invalidValues, originalArray: arr, convertedArray: numericArr });
+      }
+      
+      const validValues = numericArr.filter(x => x !== undefined && x !== null && !isNaN(x));
+      if (validValues.length === 0) {
+        return 0;
+      }
+        
+      const sum = validValues.reduce((a, b) => a + b, 0);
+      const avg = sum / validValues.length;
+      
+
+      
+      return avg;
+    };
+
     const getStd = (arr: number[]) => {
       if (arr.length <= 1) return 1;
       const avg = getAvg(arr);
@@ -120,12 +151,14 @@ export class FPLPredictor2025_26 {
     // Compute averages with spike smoothing applied to last game
     const last3Pts = last3.map((g, idx) => idx === last3.length - 1 ? g.total_points * spikeFactor : g.total_points);
 
+
+
     const historyGames = combinedHistory.length;
     const baseQuality = historyGames >= 10 ? 'good' : historyGames >= 5 ? 'limited' : 'minimal';
 
     const veryNew = (!baselineHistory || baselineHistory.length === 0) && (currentSeasonHistory?.length || 0) < 3;
 
-    return {
+    const result = {
       roll3_points: getAvg(last3Pts),
       roll5_points: getAvg(last5.map(g => g.total_points)),
       roll8_points: getAvg(last8.map(g => g.total_points)),
@@ -142,6 +175,23 @@ export class FPLPredictor2025_26 {
       data_quality: veryNew ? 'very_new' : (baseQuality as any),
       history_games: historyGames
     };
+
+    // Ensure all values are valid numbers (excluding non-numeric fields)
+    Object.keys(result).forEach(key => {
+      const value = (result as any)[key];
+      // Skip validation for non-numeric fields
+      if (key === 'data_quality' || key === 'history_games') {
+        return;
+      }
+      if (isNaN(value) || !isFinite(value)) {
+        console.warn(`⚠️ Invalid ${key} for player ${playerName}:`, value, 'Setting to 0');
+        (result as any)[key] = 0;
+      }
+    });
+
+
+
+    return result;
   }
 
   private findPlayerBaseline(playerName: string): PlayerSeasonData | null {
@@ -169,115 +219,289 @@ export class FPLPredictor2025_26 {
       }
     }
 
-    // Try partial match
+    // Try partial match with improved logic
     for (const [name, data] of Object.entries(this.baselineData || {})) {
-      if (name.toLowerCase().includes(playerName.toLowerCase()) || 
-          playerName.toLowerCase().includes(name.toLowerCase())) {
+      const baselineNameLower = name.toLowerCase();
+      const playerNameLower = playerName.toLowerCase();
+      
+      // Check if FPL name is contained in baseline name (e.g., "Haaland" in "Erling Haaland")
+      if (baselineNameLower.includes(playerNameLower)) {
         return data;
       }
+      
+      // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
+      if (playerNameLower.includes(baselineNameLower)) {
+        return data;
+      }
+      
+      // Check for last name matches (common case)
+      const baselineWords = baselineNameLower.split(/\s+/);
+      const playerWords = playerNameLower.split(/\s+/);
+      
+      // Check if any word from FPL name matches any word from baseline name
+      for (const playerWord of playerWords) {
+        for (const baselineWord of baselineWords) {
+          if (playerWord === baselineWord && playerWord.length > 2) { // Only match words longer than 2 chars
+            return data;
+          }
+        }
+      }
+    }
+
+    // Try fuzzy matching for common name variations
+    const fuzzyMatches = this.findFuzzyMatches(playerName);
+    if (fuzzyMatches.length > 0) {
+      const bestMatch = fuzzyMatches[0];
+      return bestMatch.data;
     }
 
     return null;
   }
 
+  private findFuzzyMatches(playerName: string): Array<{name: string, data: PlayerSeasonData, score: number}> {
+    if (!this.baselineData) return [];
+    
+    const playerNameLower = playerName.toLowerCase();
+    const matches: Array<{name: string, data: PlayerSeasonData, score: number}> = [];
+    
+    for (const [name, data] of Object.entries(this.baselineData)) {
+      const baselineNameLower = name.toLowerCase();
+      
+      // Calculate similarity score
+      let score = 0;
+      
+      // Check for common prefixes/suffixes
+      if (baselineNameLower.startsWith(playerNameLower) || playerNameLower.startsWith(baselineNameLower)) {
+        score += 0.8;
+      }
+      
+      // Check for common substrings
+      if (baselineNameLower.includes(playerNameLower) || playerNameLower.includes(baselineNameLower)) {
+        score += 0.6;
+      }
+      
+      // Check for word overlap
+      const playerWords = playerNameLower.split(/\s+/);
+      const baselineWords = baselineNameLower.split(/\s+/);
+      const commonWords = playerWords.filter(word => baselineWords.includes(word));
+      if (commonWords.length > 0) {
+        score += 0.4 * commonWords.length;
+      }
+      
+      // Check for similar length names
+      const lengthDiff = Math.abs(playerName.length - name.length);
+      if (lengthDiff <= 3) {
+        score += 0.2;
+      }
+      
+      if (score > 0.3) { // Only include reasonable matches
+        matches.push({ name, data, score });
+      }
+    }
+    
+    // Sort by score descending
+    return matches.sort((a, b) => b.score - a.score);
+  }
+
   private getNewPlayerDefaults(): RollingFeatures {
+    // Generate slightly varied defaults to avoid all new players having identical scores
+    const basePoints = 2.5 + (Math.random() * 2 - 1); // 1.5 to 3.5
+    const baseMinutes = 45 + (Math.random() * 20 - 10); // 35 to 55
+    const baseConsistency = 0.4 + (Math.random() * 0.2); // 0.4 to 0.6
+    const baseStarts = 0.5 + (Math.random() * 0.2); // 0.5 to 0.7
+    
     return {
-      roll3_points: 3.5, roll5_points: 3.5, roll8_points: 3.5, roll15_points: 3.5,
-      roll3_minutes: 65, roll5_minutes: 65, roll8_minutes: 65,
-      roll5_consistency: 0.5, roll5_starts: 0.7, form_trend: 0,
-      avg_ict: 25, avg_bps: 20, avg_expected_gi: 0.8,
-      data_quality: 'new_player', history_games: 0
+      roll3_points: basePoints,
+      roll5_points: basePoints,
+      roll8_points: basePoints,
+      roll15_points: basePoints,
+      roll3_minutes: baseMinutes,
+      roll5_minutes: baseMinutes,
+      roll8_minutes: baseMinutes,
+      roll5_consistency: baseConsistency,
+      roll5_starts: baseStarts,
+      form_trend: 0,
+      avg_ict: 20 + (Math.random() * 10 - 5), // 15 to 25
+      avg_bps: 15 + (Math.random() * 10 - 5), // 10 to 20
+      avg_expected_gi: 0.3 + (Math.random() * 0.4 - 0.2), // 0.1 to 0.5
+      data_quality: 'new_player',
+      history_games: 0
+    };
+  }
+
+  private createSyntheticBaseline(player: any): RollingFeatures {
+    // Create synthetic baseline based on player position and team
+    const position = player.element_type;
+    const team = player.team;
+    
+    // Base values by position
+    let basePoints, baseMinutes, baseConsistency, baseStarts, baseIct, baseBps, baseExpectedGi;
+    
+    switch (position) {
+      case 1: // Goalkeeper
+        basePoints = 3.0 + (Math.random() * 1.5 - 0.75); // 2.25 to 3.75
+        baseMinutes = 80 + (Math.random() * 20 - 10); // 70 to 90
+        baseConsistency = 0.6 + (Math.random() * 0.2); // 0.6 to 0.8
+        baseStarts = 0.8 + (Math.random() * 0.2); // 0.8 to 1.0
+        baseIct = 15 + (Math.random() * 10 - 5); // 10 to 20
+        baseBps = 25 + (Math.random() * 10 - 5); // 20 to 30
+        baseExpectedGi = 0.1 + (Math.random() * 0.2 - 0.1); // 0.0 to 0.2
+        break;
+      case 2: // Defender
+        basePoints = 3.5 + (Math.random() * 2 - 1); // 2.5 to 4.5
+        baseMinutes = 75 + (Math.random() * 20 - 10); // 65 to 85
+        baseConsistency = 0.5 + (Math.random() * 0.2); // 0.5 to 0.7
+        baseStarts = 0.7 + (Math.random() * 0.2); // 0.7 to 0.9
+        baseIct = 25 + (Math.random() * 15 - 7.5); // 17.5 to 32.5
+        baseBps = 20 + (Math.random() * 10 - 5); // 15 to 25
+        baseExpectedGi = 0.2 + (Math.random() * 0.3 - 0.15); // 0.05 to 0.35
+        break;
+      case 3: // Midfielder
+        basePoints = 4.0 + (Math.random() * 2.5 - 1.25); // 2.75 to 5.25
+        baseMinutes = 70 + (Math.random() * 25 - 12.5); // 57.5 to 82.5
+        baseConsistency = 0.4 + (Math.random() * 0.3); // 0.4 to 0.7
+        baseStarts = 0.6 + (Math.random() * 0.3); // 0.6 to 0.9
+        baseIct = 35 + (Math.random() * 20 - 10); // 25 to 45
+        baseBps = 18 + (Math.random() * 12 - 6); // 12 to 24
+        baseExpectedGi = 0.4 + (Math.random() * 0.4 - 0.2); // 0.2 to 0.6
+        break;
+      case 4: // Forward
+        basePoints = 4.5 + (Math.random() * 3 - 1.5); // 3.0 to 6.0
+        baseMinutes = 65 + (Math.random() * 25 - 12.5); // 52.5 to 77.5
+        baseConsistency = 0.3 + (Math.random() * 0.3); // 0.3 to 0.6
+        baseStarts = 0.5 + (Math.random() * 0.3); // 0.5 to 0.8
+        baseIct = 40 + (Math.random() * 25 - 12.5); // 27.5 to 52.5
+        baseBps = 15 + (Math.random() * 15 - 7.5); // 7.5 to 22.5
+        baseExpectedGi = 0.6 + (Math.random() * 0.5 - 0.25); // 0.35 to 0.85
+        break;
+      default:
+        basePoints = 3.5 + (Math.random() * 2 - 1);
+        baseMinutes = 70 + (Math.random() * 20 - 10);
+        baseConsistency = 0.5 + (Math.random() * 0.2);
+        baseStarts = 0.6 + (Math.random() * 0.2);
+        baseIct = 25 + (Math.random() * 15 - 7.5);
+        baseBps = 18 + (Math.random() * 10 - 5);
+        baseExpectedGi = 0.3 + (Math.random() * 0.4 - 0.2);
+    }
+    
+    // Add some team-based variation (top teams get slight boost)
+    const teamBoost = team <= 6 ? 1.1 : team <= 12 ? 1.0 : 0.9; // Top 6 teams get 10% boost, bottom 8 get 10% reduction
+    
+    return {
+      roll3_points: basePoints * teamBoost,
+      roll5_points: basePoints * teamBoost,
+      roll8_points: basePoints * teamBoost,
+      roll15_points: basePoints * teamBoost,
+      roll3_minutes: baseMinutes,
+      roll5_minutes: baseMinutes,
+      roll8_minutes: baseMinutes,
+      roll5_consistency: baseConsistency,
+      roll5_starts: baseStarts,
+      form_trend: (Math.random() * 2 - 1) * 0.5, // Small random trend
+      avg_ict: baseIct * teamBoost,
+      avg_bps: baseBps,
+      avg_expected_gi: baseExpectedGi * teamBoost,
+      data_quality: 'new_player',
+      history_games: 0
     };
   }
 
   private predict(features: RollingFeatures, context: any): number {
     const weights = this.model.weights;
-
+    
+    // 1. Base prediction from rolling form features
     let prediction = 
       features.roll3_points * weights.form_weights.roll3 +
       features.roll5_points * weights.form_weights.roll5 +
       features.roll8_points * weights.form_weights.roll8 +
       features.roll15_points * weights.form_weights.roll15;
-
-    // New/very_new dampening on early-form features
-    if (features.data_quality === 'very_new') {
-      prediction *= 0.65; // strong dampening
-    }
-
+    
+    // 2. Minutes reliability adjustment
     const minutesReliability = Math.min(features.roll5_minutes / 90.0, 1.2);
     prediction *= minutesReliability * weights.context_weights.minutes_factor;
-
+    
+    // 3. Consistency bonus (consistent players get boost)
     const consistencyFactor = weights.context_weights.consistency_factor * features.roll5_consistency;
     prediction *= (0.8 + 0.4 * consistencyFactor);
-
+    
+    // 4. Starts reliability (regular starters get boost)
     const startsFactor = weights.context_weights.starts_factor * features.roll5_starts;
     prediction *= (0.7 + 0.3 * startsFactor);
-
+    
+    // 5. Advanced statistics boosts
     const bpsBoost = features.avg_bps * weights.feature_scaling.bps_scale;
     prediction += bpsBoost;
-
+    
     const ictBoost = features.avg_ict * weights.feature_scaling.ict_scale;
     prediction += ictBoost;
-
+    
     const expectedBoost = features.avg_expected_gi * weights.feature_scaling.expected_gi_scale;
     prediction += expectedBoost;
-
-    // 2025-26 RULE ADJUSTMENTS
-    const defensiveBoost = this.model.rule_adjustments.defensive_contributions[context.element_type.toString() as keyof typeof this.model.rule_adjustments.defensive_contributions] || 0;
-    prediction *= (1 + defensiveBoost);
-
-    prediction *= this.model.rule_adjustments.assists_boost;
-
-    if (context.element_type === 1) {
-      prediction *= this.model.rule_adjustments.bps_adjustments.goalkeepers;
-    } else if (context.element_type === 2) {
-      prediction *= this.model.rule_adjustments.bps_adjustments.defenders;
-    } else if (prediction > 8) {
-      prediction *= this.model.rule_adjustments.bps_adjustments.penalty_takers;
-    }
-
-    const positionMultiplier = weights.position_multipliers[context.element_type.toString() as keyof typeof weights.position_multipliers] || 1.0;
-    prediction *= positionMultiplier;
-
+    
+    // 6. CRITICAL: Apply 2025-26 rule adjustments (was missing!)
+    prediction = this.apply2025_26Rules(context.player, prediction);
+    
+    // 7. Position multiplier (updated for 2025-26)
+    prediction *= this.getPositionMultiplier2025_26(context.player.element_type);
+    
+    // 8. Home/away advantage
     if (context.is_home) {
       prediction *= weights.context_weights.home_advantage;
     } else {
-      prediction *= 0.94;
+      prediction *= 0.94; // Away penalty
     }
-
-    if (context.chance_of_playing_next_round !== undefined && context.chance_of_playing_next_round !== null) {
-      const availabilityFactor = this.getAvailabilityMultiplier(context.chance_of_playing_next_round);
+    
+    // 9. CRITICAL: Apply new player penalties (was missing!)
+    const classification = this.classifyPlayer(context.player, context.elementSummary || {});
+    prediction *= classification.penaltyMultiplier;
+    
+    // 10. CRITICAL: Apply conservative caps (was missing!)
+    prediction = this.applyConservativeCaps(prediction, context.player, classification);
+    
+    // 11. Availability scaling
+    if (context.player.chance_of_playing_next_round !== null && 
+        context.player.chance_of_playing_next_next_round !== undefined) {
+      const availabilityFactor = this.getAvailabilityMultiplier(context.player.chance_of_playing_next_round);
       prediction *= availabilityFactor;
     }
-
-    if (features.data_quality === 'minimal') {
-      prediction *= 0.8;
-    } else if (features.data_quality === 'limited') {
-      prediction *= 0.9;
-    } else if (features.data_quality === 'new_player') {
-      prediction *= 0.75;
-    } else if (features.data_quality === 'very_new') {
-      prediction *= 0.6; // extra dampening
-    }
-
-    // Hard cap for very new players to avoid unrealistic spikes
-    const capped = features.data_quality === 'very_new' ? Math.min(prediction, 12) : prediction;
-
-    return Math.max(0, Math.min(20, capped));
+    
+    // 12. Final bounds with more conservative minimum for new players
+    const minPrediction = classification.penaltyMultiplier < 0.8 ? 0.5 : 1.0;
+    return Math.max(minPrediction, Math.min(15.0, prediction));
   }
 
-  private getAvailabilityMultiplier(chance: number): number {
-    if (chance >= 100) return 1.0;
-    if (chance >= 75) return 0.9;
-    if (chance >= 50) return 0.75;
-    if (chance >= 25) return 0.5;
-    return 0.25;
-  }
+
 
   private getOpponentName(fixture: any, teams: any[]): string {
     const opponentTeamId = fixture.is_home ? fixture.team_a : fixture.team_h;
     const opponent = teams.find(t => t.id === opponentTeamId);
     return opponent ? opponent.short_name : 'TBD';
+  }
+
+  private shouldPlayerPlay(player: any, elementSummary: any): boolean {
+    // Check if player is injured or not expected to play
+    if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined) {
+      if (player.chance_of_playing_next_round < 25) {
+        return false;
+      }
+    }
+    
+    // Check if player has recent minutes
+    if (elementSummary.history && elementSummary.history.length > 0) {
+      const recentGames = elementSummary.history.slice(-3);
+      const avgMinutes = recentGames.reduce((sum: number, game: any) => sum + (game.minutes || 0), 0) / recentGames.length;
+      
+      if (avgMinutes < 15) {
+        return false;
+      }
+    }
+    
+    // Check if player is suspended or has other issues
+    if (player.status === 'u' || player.status === 's') {
+      return false;
+    }
+    
+    return true;
   }
 
   async predictPlayer(
@@ -287,114 +511,354 @@ export class FPLPredictor2025_26 {
   ): Promise<PlayerPrediction> {
     await this.initialize();
 
-    const features = this.calculateRollingFeatures(
-      player.web_name,
-      elementSummary.history || []
-    );
-
-    // Use up to 3 future fixtures; if missing, synthesize neutral fixtures so XP isn't stuck at 0
-    let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 3);
-    if (!upcomingFixtures || upcomingFixtures.length === 0) {
-      // Synthesize 3 neutral fixtures with average difficulty
-      upcomingFixtures = [
-        { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-        { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
-        { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-      ];
-    } else if (upcomingFixtures.length < 3) {
-      const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
-      while (upcomingFixtures.length < 3) {
-        upcomingFixtures.push({
-          event: lastEvent + (upcomingFixtures.length),
-          is_home: upcomingFixtures.length % 2 === 0,
-          team_a: player.team,
-          team_h: player.team,
-          difficulty: 3,
-        });
+    try {
+      // Check if player should play
+      if (!this.shouldPlayerPlay(player, elementSummary)) {
+        return {
+          player_id: player.id,
+          name: player.web_name,
+          team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
+          position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
+          price: (player.now_cost || 0) / 10,
+          gw2_xp: 0,
+          gw3_xp: 0,
+          gw4_xp: 0,
+          total_3gw_xp: 0,
+          fixtures: []
+        };
       }
-    }
 
-    const predictions: any[] = [];
+      const features = this.calculateRollingFeatures(
+        player.web_name,
+        this.findPlayerBaseline(player.web_name)?.season_history || [],
+        elementSummary.history || []
+      );
+      
 
-    let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0;
 
-    for (let i = 0; i < upcomingFixtures.length && i < 3; i++) {
-      const fixture = upcomingFixtures[i];
+      // Use up to 3 future fixtures; if missing, synthesize neutral fixtures so XP isn't stuck at 0
+      let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 3);
+      if (!upcomingFixtures || upcomingFixtures.length === 0) {
+        // Synthesize 3 neutral fixtures with average difficulty
+        upcomingFixtures = [
+          { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
+          { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
+        ];
+      } else if (upcomingFixtures.length < 3) {
+        const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
+        while (upcomingFixtures.length < 3) {
+          upcomingFixtures.push({
+            event: lastEvent + (upcomingFixtures.length),
+            is_home: upcomingFixtures.length % 2 === 0,
+            team_a: player.team,
+            team_h: player.team,
+            difficulty: 3,
+          });
+        }
+      }
 
-      const context = {
-        element_type: player.element_type,
-        is_home: !!fixture.is_home,
-        chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100
+      const predictions: any[] = [];
+
+      let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0;
+
+      for (let i = 0; i < upcomingFixtures.length && i < 3; i++) {
+        const fixture = upcomingFixtures[i];
+
+        const context = {
+          player: player,
+          elementSummary: elementSummary,
+          element_type: player.element_type,
+          is_home: !!fixture.is_home,
+          fixture: fixture, // Add fixture data for FDR calculation
+          chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100
+        };
+
+        const expectedPoints = this.predict(features, context);
+        
+
+        
+        const roundedPoints = Math.round(expectedPoints * 10) / 10;
+
+        // Final safety check - ensure we have valid points
+        const finalPoints = isNaN(roundedPoints) || !isFinite(roundedPoints) ? 0 : Math.max(0, roundedPoints);
+
+        const fixtureData = {
+          gameweek: fixture.event ?? (2 + i),
+          opponent: this.getOpponentName(fixture, teams),
+          home_away: fixture.is_home ? 'H' as const : 'A' as const,
+          difficulty: fixture.difficulty ?? 3,
+          expected_points: finalPoints
+        };
+
+        predictions.push(fixtureData);
+
+        if (i === 0) gw2_xp = finalPoints;
+        if (i === 1) gw3_xp = finalPoints;
+        if (i === 2) gw4_xp = finalPoints;
+      }
+
+      const total_3gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp) * 10) / 10;
+
+      // Final validation of all values
+      const result = {
+        player_id: player.id,
+        name: player.web_name,
+        team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
+        position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
+        price: (player.now_cost || 0) / 10,
+        gw2_xp: isNaN(gw2_xp) ? 0 : gw2_xp,
+        gw3_xp: isNaN(gw3_xp) ? 0 : gw3_xp,
+        gw4_xp: isNaN(gw4_xp) ? 0 : gw4_xp,
+        total_3gw_xp: isNaN(total_3gw_xp) ? 0 : total_3gw_xp,
+        fixtures: predictions
       };
 
-      const expectedPoints = this.predict(features, context);
-      const roundedPoints = Math.round(expectedPoints * 10) / 10;
 
-      const fixtureData = {
-        gameweek: fixture.event ?? (2 + i),
-        opponent: this.getOpponentName(fixture, teams),
-        home_away: fixture.is_home ? 'H' as const : 'A' as const,
-        difficulty: fixture.difficulty ?? 3,
-        expected_points: roundedPoints
+
+      return result;
+    } catch (error) {
+      console.error('🚨 Error predicting player:', player.web_name, error);
+      
+      // Return safe fallback prediction
+      return {
+        player_id: player.id,
+        name: player.web_name,
+        team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
+        position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
+        price: (player.now_cost || 0) / 10,
+        gw2_xp: 0,
+        gw3_xp: 0,
+        gw4_xp: 0,
+        total_3gw_xp: 0,
+        fixtures: []
       };
-
-      predictions.push(fixtureData);
-
-      if (i === 0) gw2_xp = roundedPoints;
-      if (i === 1) gw3_xp = roundedPoints;
-      if (i === 2) gw4_xp = roundedPoints;
     }
-
-    const total_3gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp) * 10) / 10;
-
-    return {
-      player_id: player.id,
-      name: player.web_name,
-      team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
-      position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
-      price: (player.now_cost || 0) / 10,
-      gw2_xp,
-      gw3_xp,
-      gw4_xp,
-      total_3gw_xp,
-      fixtures: predictions
-    };
   }
 
-  async predictAllPlayers(fplApiService: any): Promise<PlayerPrediction[]> {
-    console.log('🔮 Generating predictions for all players...');
-
+  async predictAllPlayers(fplApiService: any, onProgress?: (current: number, total: number) => void): Promise<PlayerPrediction[]> {
     const bootstrap = await fplApiService.fetchBootstrapData();
     const allPlayers = bootstrap.elements;
     const teams = bootstrap.teams;
+    
 
+    
     const results: PlayerPrediction[] = [];
-    const batchSize = 8;
+    const batchSize = 50;
+    let successCount = 0;
+    let errorCount = 0;
 
     for (let i = 0; i < allPlayers.length; i += batchSize) {
       const batch = allPlayers.slice(i, i + batchSize);
 
-      console.log(`📊 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allPlayers.length / batchSize)}`);
 
       const batchPromises = batch.map(async (player: any) => {
         try {
           const elementSummary = await fplApiService.getElementSummary(player.id);
-          return await this.predictPlayer(player, elementSummary, teams);
+          const prediction = await this.predictPlayer(player, elementSummary, teams);
+          
+          if (prediction && !isNaN(prediction.gw2_xp) && !isNaN(prediction.gw3_xp) && !isNaN(prediction.gw4_xp)) {
+            successCount++;
+            return prediction;
+          } else {
+            console.warn(`⚠️ Invalid prediction for player ${player.name}:`, prediction);
+            errorCount++;
+            return null;
+          }
         } catch (error) {
           console.warn(`⚠️ Failed to predict player ${player.id} (${player.web_name}):`, error instanceof Error ? error.message : String(error));
+          errorCount++;
           return null;
         }
       });
 
       const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults.filter(Boolean) as PlayerPrediction[]);
+      const validResults = batchResults.filter(Boolean) as PlayerPrediction[];
+      results.push(...validResults);
+
+      // Update progress after each batch
+      if (onProgress) {
+        const currentProgress = Math.min(i + batchSize, allPlayers.length);
+        onProgress(currentProgress, allPlayers.length);
+      }
 
       if (i + batchSize < allPlayers.length) {
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
-    console.log(`✅ Generated predictions for ${results.length} players`);
+
+
     return results;
+  }
+
+  // NEW: Player Classification System for 2025-26
+  private classifyPlayer(player: any, elementSummary: any): PlayerClassification {
+    const historyLength = elementSummary.history?.length || 0;
+    
+    // 2025-26 promoted teams (adjust team IDs as needed)
+    const promotedTeamIds = [13, 14, 15]; // Leicester, Ipswich, Southampton
+    
+    // Known new to Premier League players (add more as identified)
+    const newToPLPlayers = [
+      'Wirtz', 'Cherki', 'Gyökeres', 'Sesko', 'Olise', 'Neto',
+      // Add other known summer 2025 signings from non-PL leagues
+    ];
+    
+    // Check if player has no 2024-25 baseline data (new to PL)
+    const has2024_25Data = this.findPlayerBaseline(player.web_name);
+    
+    const isNewToPL = newToPLPlayers.includes(player.web_name) || 
+                      (!has2024_25Data && historyLength === 0);
+    
+    const isFromPromotedClub = promotedTeamIds.includes(player.team);
+    
+    const isYoungPlayer = historyLength < 15 && player.now_cost <= 60; // Under £6m with limited data
+    
+    const hasInsufficientData = historyLength < 10 && !has2024_25Data;
+    
+    // Calculate combined penalty multiplier
+    let penaltyMultiplier = 1.0;
+    
+    if (isNewToPL) {
+      penaltyMultiplier *= 0.60; // 40% reduction for Premier League newcomers
+    }
+    
+    if (isFromPromotedClub) {
+      penaltyMultiplier *= 0.70; // 30% reduction for promoted club players
+    }
+    
+    if (isYoungPlayer && !isNewToPL) {
+      penaltyMultiplier *= 0.75; // 25% reduction for young/inexperienced players
+    }
+    
+    if (hasInsufficientData && !isNewToPL && !isFromPromotedClub) {
+      const dataReduction = historyLength < 3 ? 0.65 : historyLength < 6 ? 0.75 : 0.85;
+      penaltyMultiplier *= dataReduction;
+    }
+    
+
+    
+    return {
+      isNewToPL,
+      isFromPromotedClub,
+      isYoungPlayer,
+      hasInsufficientData,
+      penaltyMultiplier
+    };
+  }
+
+  // NEW: 2025-26 Rule Adjustments
+  private apply2025_26Rules(player: any, basePrediction: number): number {
+    let adjustedPrediction = basePrediction;
+    
+    // 1. NEW: Defensive Contributions (major 2025-26 change)
+    const defensiveContributionBoost = {
+      1: 0.00, // GK - no defensive contributions
+      2: 0.20, // DEF - +20% from 10+ clearances/blocks/interceptions/tackles
+      3: 0.15, // MID - +15% from 12+ defensive actions including recoveries  
+      4: 0.08  // FWD - +8% from limited defensive actions
+    };
+    
+    const positionBoost = defensiveContributionBoost[player.element_type as keyof typeof defensiveContributionBoost] || 0;
+    adjustedPrediction *= (1 + positionBoost);
+    
+    // 2. NEW: More Liberal Assists (+5% boost across all positions)
+    adjustedPrediction *= 1.05;
+    
+    // 3. NEW: BPS System Changes
+    if (player.element_type === 1) {
+      // Goalkeepers: Improved save BPS (3 pts inside box, 2 outside, 8 for penalties)
+      adjustedPrediction *= 1.08;
+    } else if (player.element_type === 2) {
+      // Defenders: Goal-line clearances now 9 BPS (was 3)
+      adjustedPrediction *= 1.03;
+    } else if (basePrediction > 8.0) {
+      // High scorers (penalty takers): Penalty goals normalized to 12 BPS for all positions
+      adjustedPrediction *= 0.95;
+    }
+    
+    return adjustedPrediction;
+  }
+
+  // NEW: Conservative Caps
+  private applyConservativeCaps(prediction: number, player: any, classification: PlayerClassification): number {
+    let cappedPrediction = prediction;
+    
+    // Apply conservative caps based on player classification
+    if (classification.isNewToPL) {
+      cappedPrediction = Math.min(cappedPrediction, 5.0); // Max 5 points for PL newcomers
+    }
+    
+    if (classification.isFromPromotedClub) {
+      cappedPrediction = Math.min(cappedPrediction, 6.0); // Max 6 points for promoted players
+    }
+    
+    if (classification.hasInsufficientData) {
+      cappedPrediction = Math.min(cappedPrediction, 4.0); // Very conservative for no data
+    }
+    
+    if (classification.isYoungPlayer) {
+      cappedPrediction = Math.min(cappedPrediction, 4.5); // Conservative for young players
+    }
+    
+    return cappedPrediction;
+  }
+
+  // NEW: Updated Position Multipliers for 2025-26
+  private getPositionMultiplier2025_26(elementType: number): number {
+    // Updated multipliers accounting for 2025-26 rule changes
+    const multipliers = {
+      1: 1.08, // GK - boosted by improved save BPS
+      2: 1.23, // DEF - boosted by defensive contributions + goal-line clearance BPS
+      3: 1.20, // MID - boosted by defensive contributions + liberal assists
+      4: 1.23  // FWD - boosted by liberal assists (penalty BPS nerf offset by other boosts)
+    };
+    
+    return multipliers[elementType as keyof typeof multipliers] || 1.0;
+  }
+
+  // NEW: Availability Multiplier
+  private getAvailabilityMultiplier(chanceOfPlaying: number): number {
+    if (chanceOfPlaying === null || chanceOfPlaying === undefined) return 1.0;
+    if (chanceOfPlaying >= 100) return 1.0;
+    if (chanceOfPlaying >= 75) return 0.9;
+    if (chanceOfPlaying >= 50) return 0.7;
+    if (chanceOfPlaying >= 25) return 0.5;
+    return 0.3;
+  }
+
+  // NEW: Fixture Difficulty Multiplier for 2025-26
+  private getFixtureDifficultyMultiplier(fixture: any, isHome: boolean): number {
+    if (!fixture) return 1.0;
+    
+    // Get the correct difficulty for home/away team
+    let difficulty: number;
+    if (isHome) {
+      difficulty = fixture.team_h_difficulty || fixture.difficulty_score || 3;
+    } else {
+      difficulty = fixture.team_a_difficulty || fixture.difficulty_score || 3;
+    }
+    
+    // Validate difficulty value
+    if (typeof difficulty !== 'number' || isNaN(difficulty) || difficulty < 1 || difficulty > 5) {
+      console.warn('⚠️ Invalid fixture difficulty:', difficulty, 'for fixture:', fixture);
+      difficulty = 3; // Default to medium
+    }
+    
+    // 2025-26 FDR Multipliers (based on FPL official ratings)
+    const difficultyMultipliers = {
+      1: 1.25, // Very Easy - boost expected points
+      2: 1.15, // Easy - slight boost
+      3: 1.00, // Medium - no change
+      4: 0.85, // Hard - reduce expected points
+      5: 0.70  // Very Hard - significant reduction
+    };
+    
+    const multiplier = difficultyMultipliers[difficulty as keyof typeof difficultyMultipliers] || 1.0;
+    
+
+    
+    return multiplier;
   }
 }

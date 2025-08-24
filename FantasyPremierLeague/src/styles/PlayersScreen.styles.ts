@@ -53,6 +53,11 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     marginRight: 8,
   },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginRight: 8,
+  },
   chevronIcon: {
     fontSize: 12,
     color: '#6B7280',
@@ -101,40 +106,48 @@ export const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
+    backgroundColor: 'white',
+  },
+  priceButtonActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
   },
   priceButtonText: {
     fontSize: 12,
-    fontWeight: '500',
+    color: '#374151',
+  },
+  priceButtonTextActive: {
+    color: 'white',
+  },
+  resultsContainer: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  resultsText: {
+    fontSize: 14,
+    color: '#6B7280',
   },
   tableContainer: {
-    // Let content define width so we don't get a large empty gap
-    alignSelf: 'flex-start',
-    paddingBottom: 0,
-    marginBottom: 0,
+    minWidth: 1200,
   },
   tableHeader: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 0,
-    marginBottom: 6,
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
   },
   headerCell: {
     width: 80,
     alignItems: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
   },
   playerHeaderCell: {
     width: 150,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
   headerText: {
     fontSize: 12,
@@ -143,8 +156,6 @@ export const styles = StyleSheet.create({
   },
   playersList: {
     flex: 1,
-    paddingBottom: 0,
-    marginBottom: 0,
   },
   playerRow: {
     flexDirection: 'row',
@@ -159,7 +170,6 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
-    // Add subtle border for better touch feedback
     borderWidth: 1,
     borderColor: 'transparent',
   },
@@ -168,12 +178,25 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  playerCell: {
+    width: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  playerInfo: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  playerPosition: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   playerPhoto: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginRight: 8,
-    // Use top portion of the image
     resizeMode: 'cover',
   },
   playerDetails: {
@@ -243,64 +266,25 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
-  playerCountContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 8,
-    alignItems: 'center',
-  },
-  playerCountText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  clubDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  clubBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-  },
-  xpStatusContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  xpStatusText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-
-  // Best 11 Section Styles
   best11Section: {
-    marginBottom: 16,
-    padding: 16,
+    marginTop: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
     borderRadius: 12,
     borderWidth: 1,
   },
-
   best11Title: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 16,
     textAlign: 'center',
   },
-
   best11Grid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 16,
   },
-
   best11Card: {
     alignItems: 'center',
     padding: 12,
@@ -308,25 +292,112 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     minWidth: 80,
   },
-
   best11CardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 4,
   },
-
   best11CardFormation: {
     fontSize: 14,
     marginBottom: 4,
   },
-
   best11CardPoints: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 4,
   },
-
   best11CardCost: {
     fontSize: 12,
+  },
+  // Optimal Teams Styles
+  optimalTeamsSection: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+    color: '#1a1a1a',
+  },
+  teamCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  teamHeader: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  captainText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#28a745',
+    textAlign: 'center',
+  },
+  subTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#495057',
+  },
+  startingXI: {
+    marginBottom: 16,
+  },
+  playerText: {
+    fontSize: 13,
+    marginBottom: 4,
+    color: '#1a1a1a',
+    paddingLeft: 8,
+  },
+  bench: {
+    borderTopWidth: 1,
+    borderTopColor: '#dee2e6',
+    paddingTop: 12,
+  },
+  benchText: {
+    fontSize: 12,
+    marginBottom: 3,
+    color: '#6c757d',
+    paddingLeft: 8,
+  },
+  clubDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clubBadge: {
+    width: 20,
+    height: 20,
+    marginRight: 8,
+    resizeMode: 'contain',
+  },
+  playerCountContainer: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  playerCountText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  loadMoreButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginVertical: 16,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 
