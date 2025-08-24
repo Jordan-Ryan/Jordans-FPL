@@ -314,23 +314,23 @@ const SquadScreen: React.FC = () => {
 
   const getDefPosition = (index: number) => {
     const defenders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'DEF').length;
-    const spacing = width / (defenders + 1); // Add 1 for better spacing
-    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
+    const spacing = width / defenders;
+    const left = (spacing * index) + (spacing / 2) - 36;
     return { top: 154, left };
   };
 
   const getMidPosition = (index: number) => {
     const midfielders = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'MID').length;
-    const spacing = width / (midfielders + 1); // Add 1 for better spacing
-    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
-    return { top: 240, left };
+    const spacing = width / midfielders;
+    const left = (spacing * index) + (spacing / 2) - 36;
+    return { top: 264, left };
   };
 
   const getFwdPosition = (index: number) => {
     const forwards = startingXI.filter(p => p.squad_position && getPositionName(p.squad_position) === 'FWD').length;
-    const spacing = width / (forwards + 1); // Add 1 for better spacing
-    const left = (spacing * (index + 1)) - 36; // Start from spacing, not 0
-    return { top: 326, left };
+    const spacing = width / forwards;
+    const left = (spacing * index) + (spacing / 2) - 36;
+    return { top: 374, left };
   };
 
   const handlePlayerPress = (player: FPLPlayer) => {
