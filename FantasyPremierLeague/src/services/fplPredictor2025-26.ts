@@ -459,7 +459,24 @@ export class FPLPredictor2025_26 {
       prediction *= 0.94; // Away penalty
     }
     
-    // 9. CRITICAL: Apply new player penalties (was missing!)
+    // 9. CRITICAL: Apply FDR multiplier (was missing!)
+    if (context.fixture) {
+      const fdrMultiplier = this.getFixtureDifficultyMultiplier(context.fixture, context.is_home);
+      prediction *= fdrMultiplier;
+      
+      // Add logging for FDR adjustments
+      if (Math.abs(fdrMultiplier - 1.0) > 0.01) {
+        console.log(`🏟️ FDR APPLIED: ${context.player.web_name} GW${context.gameweek}`, {
+          opponent: this.getOpponentName(context.fixture, []),
+          homeAway: context.is_home ? 'H' : 'A',
+          difficulty: context.fixture.difficulty || context.fixture.team_h_difficulty || context.fixture.team_a_difficulty || 'unknown',
+          multiplier: `${fdrMultiplier.toFixed(2)}x`,
+          adjustedPoints: prediction.toFixed(1)
+        });
+      }
+    }
+    
+    // 10. CRITICAL: Apply new player penalties (was missing!)
     const classification = this.classifyPlayer(context.player, context.elementSummary || {});
     prediction *= classification.penaltyMultiplier;
     
@@ -473,7 +490,7 @@ export class FPLPredictor2025_26 {
       });
     }
     
-    // 10. CRITICAL: Apply conservative caps (was missing!)
+    // 11. CRITICAL: Apply conservative caps (was missing!)
     const originalPrediction = prediction;
     prediction = this.applyConservativeCaps(prediction, context.player, classification, context.gameweek || 2);
     
@@ -486,14 +503,14 @@ export class FPLPredictor2025_26 {
       });
     }
     
-    // 11. Availability scaling
+    // 12. Availability scaling
     if (context.player.chance_of_playing_next_round !== null && 
         context.player.chance_of_playing_next_next_round !== undefined) {
       const availabilityFactor = this.getAvailabilityMultiplier(context.player.chance_of_playing_next_round);
       prediction *= availabilityFactor;
     }
     
-    // 12. Final bounds with more conservative minimum for new players
+    // 13. Final bounds with more conservative minimum for new players
     const minPrediction = classification.penaltyMultiplier < 0.8 ? 0.5 : 1.0;
     return Math.max(minPrediction, Math.min(15.0, prediction));
   }

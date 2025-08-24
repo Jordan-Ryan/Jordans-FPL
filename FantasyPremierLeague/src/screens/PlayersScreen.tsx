@@ -378,7 +378,7 @@ const PlayersScreen: React.FC = () => {
     return colors[team.name] || '#ccc';
   };
 
-  // Get next 3 fixtures with FDR ratings
+  // Get next 3 fixtures with FDR ratings (matching prediction system logic)
   const getNext3Fixtures = (teamId: number): { fixture: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[] => {
     if (!fixtures.length) return [];
     
@@ -386,9 +386,12 @@ const PlayersScreen: React.FC = () => {
       fixture.team_h === teamId || fixture.team_a === teamId
     );
     
-    // Get next 3 fixtures starting from current gameweek
+    // Get next 3 fixtures starting from current gameweek + 1 (matching prediction system)
+    const baseGameweek = currentGameweek;
+    const nextGameweeks = [baseGameweek + 1, baseGameweek + 2, baseGameweek + 3];
+    
     const nextFixtures = teamFixtures
-      .filter(fixture => fixture.event >= currentGameweek)
+      .filter(fixture => nextGameweeks.includes(fixture.event))
       .sort((a, b) => a.event - b.event)
       .slice(0, 3);
     
@@ -398,15 +401,27 @@ const PlayersScreen: React.FC = () => {
       const opponent = teams.find(t => t.id === opponentId);
       const venue = isHome ? '(H)' : '(A)';
       
-      // Get difficulty rating from FPL API
-      const difficulty = fixture.team_h_difficulty || fixture.team_a_difficulty || 3;
+      // Get difficulty rating using the same logic as prediction system
+      let difficulty: number;
+      if (isHome) {
+        difficulty = fixture.team_h_difficulty || fixture.difficulty_score || 3;
+      } else {
+        difficulty = fixture.team_a_difficulty || fixture.difficulty_score || 3;
+      }
+      
+      // Validate difficulty value
+      if (typeof difficulty !== 'number' || isNaN(difficulty) || difficulty < 1 || difficulty > 5) {
+        difficulty = 3; // Default to medium
+      }
+      
       let difficultyLevel: 'Easy' | 'Medium' | 'Hard' = 'Medium';
       if (difficulty <= 2) difficultyLevel = 'Easy';
       else if (difficulty >= 4) difficultyLevel = 'Hard';
       
       return {
         fixture: `${opponent?.short_name || 'UNK'} ${venue}`,
-        difficulty: difficultyLevel
+        difficulty: difficultyLevel,
+        gameweek: fixture.event
       };
     });
   };
@@ -679,28 +694,28 @@ const PlayersScreen: React.FC = () => {
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('next_gw1')}
+              onPress={() => handleSort('gw2_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 1} {getSortIndicator('next_gw1')}
+                GW{currentGameweek + 1} Fixture {getSortIndicator('gw2_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('next_gw2')}
+              onPress={() => handleSort('gw3_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 2} {getSortIndicator('next_gw2')}
+                GW{currentGameweek + 2} Fixture {getSortIndicator('gw3_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('next_gw3')}
+              onPress={() => handleSort('gw4_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 3} {getSortIndicator('next_gw3')}
+                GW{currentGameweek + 3} Fixture {getSortIndicator('gw4_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -848,11 +863,11 @@ const PlayersScreen: React.FC = () => {
                   </Text>
                 </View>
                 
-                {/* GW+1 Fixture */}
+                {/* GW3 Fixture (corresponds to gw2_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
                     const fixtures = getNext3Fixtures(player.team);
-                    const fixture = fixtures[0];
+                    const fixture = fixtures[0]; // GW3
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
                     return (
@@ -868,11 +883,11 @@ const PlayersScreen: React.FC = () => {
                   })()}
                 </View>
                 
-                {/* GW+2 Fixture */}
+                {/* GW4 Fixture (corresponds to gw3_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
                     const fixtures = getNext3Fixtures(player.team);
-                    const fixture = fixtures[1];
+                    const fixture = fixtures[1]; // GW4
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
                     return (
@@ -888,11 +903,11 @@ const PlayersScreen: React.FC = () => {
                   })()}
                 </View>
                 
-                {/* GW+3 Fixture */}
+                {/* GW5 Fixture (corresponds to gw4_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
                     const fixtures = getNext3Fixtures(player.team);
-                    const fixture = fixtures[2];
+                    const fixture = fixtures[2]; // GW5
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
                     return (
