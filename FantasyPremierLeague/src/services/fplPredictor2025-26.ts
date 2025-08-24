@@ -99,7 +99,13 @@ export class FPLPredictor2025_26 {
     // Combine baseline and current season history
     const combinedHistory = [...(baselineHistory || []), ...(currentSeasonHistory || [])];
     
-
+    console.log(`🔍 COMBINED HISTORY DEBUG: ${playerName}`, {
+      baselineHistoryLength: baselineHistory?.length || 0,
+      currentSeasonLength: currentSeasonHistory?.length || 0,
+      combinedLength: combinedHistory.length,
+      baselineSample: baselineHistory?.slice(0, 2) || [],
+      currentSample: currentSeasonHistory?.slice(0, 2) || []
+    });
 
     if (combinedHistory.length === 0) {
       console.warn('⚠️ No historical data for player:', playerName);
@@ -728,7 +734,9 @@ export class FPLPredictor2025_26 {
       console.log(`🔍 BASELINE DATA FOR ${player.web_name}:`, {
         found: !!baselineData,
         baselineHistoryLength: baselineData?.season_history?.length || 0,
-        currentHistoryLength: elementSummary.history?.length || 0
+        currentHistoryLength: elementSummary.history?.length || 0,
+        baselineDataKeys: baselineData ? Object.keys(baselineData) : [],
+        seasonHistorySample: baselineData?.season_history?.slice(0, 2) || []
       });
       
       const features = this.calculateRollingFeatures(
