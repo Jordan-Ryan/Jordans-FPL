@@ -80,6 +80,19 @@ export class FPLPredictor2025_26 {
     if (this.baselineData) {
       const samplePlayers = Object.keys(this.baselineData).slice(0, 5);
       console.log(`🔍 SAMPLE BASELINE PLAYERS:`, samplePlayers);
+      
+      // Test specific players
+      if (this.baselineData['Mohamed Salah']) {
+        console.log(`✅ MOHAMED SALAH FOUND in baseline data`);
+        console.log(`📊 Salah data:`, {
+          name: this.baselineData['Mohamed Salah'].name,
+          element_type: this.baselineData['Mohamed Salah'].element_type,
+          team: this.baselineData['Mohamed Salah'].team,
+          historyLength: this.baselineData['Mohamed Salah'].season_history?.length || 0
+        });
+      } else {
+        console.log(`❌ MOHAMED SALAH NOT FOUND in baseline data`);
+      }
     }
   }
 
@@ -288,6 +301,16 @@ export class FPLPredictor2025_26 {
     
     // DEBUG: Log what we're searching for
     console.log(`🔍 SMART MATCHING: Looking for "${playerName}" (lowercase: "${playerNameLower}")`);
+    
+    // Test the specific case for Salah
+    if (playerNameLower === 'salah') {
+      console.log(`🔍 SPECIAL CASE: Looking for "Salah" - testing all baseline names`);
+      for (const [name, data] of Object.entries(this.baselineData)) {
+        if (name.toLowerCase().includes('salah')) {
+          console.log(`🔍 FOUND SALAH VARIANT: "${name}"`);
+        }
+      }
+    }
     
     for (const [name, data] of Object.entries(this.baselineData)) {
       const baselineNameLower = name.toLowerCase();
