@@ -22,7 +22,10 @@ const Best11Screen: React.FC = () => {
   const { cachedData, isDataLoaded } = useData();
   const { width } = Dimensions.get('window');
   
-  const [currentGameweek, setCurrentGameweek] = useState(2);
+  const [currentGameweek, setCurrentGameweek] = useState(() => {
+    const baseGW = cachedData?.currentGameweek?.id || 2;
+    return baseGW + 1; // Start with next gameweek
+  });
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
@@ -45,6 +48,12 @@ const Best11Screen: React.FC = () => {
     if (cachedData && cachedData.best11Teams) {
       // The component will automatically use the cached data
       setLoading(false);
+      
+      // Update currentGameweek to next gameweek if it's still on current
+      const baseGW = cachedData.currentGameweek?.id || 2;
+      if (currentGameweek <= baseGW) {
+        setCurrentGameweek(baseGW + 1);
+      }
     }
   }, [cachedData, currentGameweek]);
 
@@ -60,7 +69,9 @@ const Best11Screen: React.FC = () => {
     }
   };
 
-  const gameweekOptions = [2, 3, 4];
+  // Use next 3 gameweeks from current (not including current)
+  const baseGameweek = cachedData?.currentGameweek?.id || 2;
+  const gameweekOptions = [baseGameweek + 1, baseGameweek + 2, baseGameweek + 3];
 
   // Use the current team directly
   const displayTeam = currentTeam;
