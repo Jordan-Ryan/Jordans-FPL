@@ -249,37 +249,17 @@ export class FPLPredictor2025_26 {
         .replace(/[^a-z0-9\s]/g, '');
 
       if (normalizedName === normalizedBaselineName) {
+        console.log(`✅ NORMALIZED MATCH: Found "${name}" for "${playerName}"`);
         return data;
       }
     }
 
-    // Try partial match with improved logic
-    for (const [name, data] of Object.entries(this.baselineData || {})) {
-      const baselineNameLower = name.toLowerCase();
-      const playerNameLower = playerName.toLowerCase();
-      
-      // Check if FPL name is contained in baseline name (e.g., "Haaland" in "Erling Haaland")
-      if (baselineNameLower.includes(playerNameLower)) {
-        return data;
-      }
-      
-      // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
-      if (playerNameLower.includes(baselineNameLower)) {
-        return data;
-      }
-      
-      // Check for last name matches (common case)
-      const baselineWords = baselineNameLower.split(/\s+/);
-      const playerWords = playerNameLower.split(/\s+/);
-      
-      // Check if any word from FPL name matches any word from baseline name
-      for (const playerWord of playerWords) {
-        for (const baselineWord of baselineWords) {
-          if (playerWord === baselineWord && playerWord.length > 2) { // Only match words longer than 2 chars
-            return data;
-          }
-        }
-      }
+    // Try smart name matching for common FPL naming patterns
+    const smartMatches = this.findSmartMatches(playerName);
+    if (smartMatches.length > 0) {
+      const bestMatch = smartMatches[0];
+      console.log(`✅ SMART MATCH: Found "${bestMatch.name}" for "${playerName}" (score: ${bestMatch.score})`);
+      return bestMatch.data;
     }
 
     // Try fuzzy matching for common name variations
@@ -292,6 +272,108 @@ export class FPLPredictor2025_26 {
 
     console.log(`❌ NO BASELINE FOUND: "${playerName}" not found in baseline data`);
     return null;
+  }
+
+  private findSmartMatches(playerName: string): Array<{name: string, data: PlayerSeasonData, score: number}> {
+    if (!this.baselineData) return [];
+    
+    const playerNameLower = playerName.toLowerCase();
+    const matches: Array<{name: string, data: PlayerSeasonData, score: number}> = [];
+    
+    for (const [name, data] of Object.entries(this.baselineData)) {
+      const baselineNameLower = name.toLowerCase();
+      let score = 0;
+      
+      // Check if FPL name is contained in baseline name (e.g., "Salah" in "Mohamed Salah")
+      if (baselineNameLower.includes(playerNameLower)) {
+        score += 50;
+        // Bonus for exact last name match
+        if (baselineNameLower.endsWith(playerNameLower)) {
+          score += 30;
+        }
+      }
+      
+      // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
+      if (playerNameLower.includes(baselineNameLower)) {
+        score += 40;
+      }
+      
+      // Check for last name matches (common case)
+      const baselineWords = baselineNameLower.split(/\s+/);
+      const playerWords = playerNameLower.split(/\s+/);
+      
+      // Check if any word from FPL name matches any word from baseline name
+      for (const playerWord of playerWords) {
+        for (const baselineWord of baselineWords) {
+          if (playerWord === baselineWord && playerWord.length > 2) {
+            score += 25;
+            // Bonus for exact word match
+            if (playerWord.length > 3) {
+              score += 15;
+            }
+          }
+        }
+      }
+      
+      // Check for common FPL naming patterns
+      if (this.isCommonFPLPattern(playerName, name)) {
+        score += 20;
+      }
+      
+      if (score > 0) {
+        matches.push({ name, data, score });
+      }
+    }
+    
+    // Sort by score (highest first)
+    return matches.sort((a, b) => b.score - a.score);
+  }
+  
+  private isCommonFPLPattern(fplName: string, baselineName: string): boolean {
+    const fplLower = fplName.toLowerCase();
+    const baselineLower = baselineName.toLowerCase();
+    
+    // Common patterns: "Salah" -> "Mohamed Salah", "Haaland" -> "Erling Haaland"
+    const commonFirstNames = ['mohamed', 'erling', 'kevin', 'bruno', 'marcus', 'james', 'alexander', 'andrew'];
+    
+    for (const firstName of commonFirstNames) {
+      if (baselineLower.startsWith(firstName + ' ') && baselineLower.includes(fplLower)) {
+        return true;
+      }
+    }
+    
+    // Handle specific common cases
+    const commonMappings: { [key: string]: string[] } = {
+      'salah': ['mohamed salah'],
+      'haaland': ['erling haaland'],
+      'de bruyne': ['kevin de bruyne'],
+      'rashford': ['marcus rashford'],
+      'arnold': ['trent alexander-arnold'],
+      'robertson': ['andrew robertson'],
+      'van dijk': ['virgil van dijk'],
+      'son': ['heung-min son'],
+      'kane': ['harry kane'],
+      'sterling': ['raheem sterling'],
+      'aguero': ['sergio aguero'],
+      'silva': ['bernardo silva', 'david silva'],
+      'fernandes': ['bruno fernandes'],
+      'pogba': ['paul pogba'],
+      'lukaku': ['romelu lukaku'],
+      'aubameyang': ['pierre-emerick aubameyang'],
+      'lacazette': ['alexandre lacazette'],
+      'pepe': ['nicolas pepe'],
+      'zaha': ['wilfried zaha'],
+      'vardy': ['jamie vardy']
+    };
+    
+    const fplNameKey = fplLower.replace(/[^a-z]/g, '');
+    if (commonMappings[fplNameKey]) {
+      return commonMappings[fplNameKey].some(mapping => 
+        baselineLower.includes(mapping.replace(/[^a-z]/g, ''))
+      );
+    }
+    
+    return false;
   }
 
   private findFuzzyMatches(playerName: string): Array<{name: string, data: PlayerSeasonData, score: number}> {
