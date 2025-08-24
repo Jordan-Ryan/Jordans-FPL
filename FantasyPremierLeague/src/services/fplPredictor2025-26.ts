@@ -75,7 +75,12 @@ export class FPLPredictor2025_26 {
     // Load baseline data directly from static file
     this.baselineData = baselineData2024_25 as Record<string, PlayerSeasonData>;
     
-
+    // DEBUG: Check baseline data loading
+    console.log(`🔍 BASELINE DATA LOADED: ${this.baselineData ? Object.keys(this.baselineData).length : 0} players`);
+    if (this.baselineData) {
+      const samplePlayers = Object.keys(this.baselineData).slice(0, 5);
+      console.log(`🔍 SAMPLE BASELINE PLAYERS:`, samplePlayers);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -98,6 +103,7 @@ export class FPLPredictor2025_26 {
 
     if (combinedHistory.length === 0) {
       console.warn('⚠️ No historical data for player:', playerName);
+      console.log(`🔍 DEBUG: Baseline history length: ${baselineHistory?.length || 0}, Current season length: ${currentSeasonHistory?.length || 0}`);
       return this.createSyntheticBaseline({ web_name: playerName });
     }
 
@@ -183,6 +189,22 @@ export class FPLPredictor2025_26 {
       data_quality: veryNew ? 'very_new' : (baseQuality as any),
       history_games: historyGames
     };
+    
+    // DEBUG: Log rolling features calculation
+    console.log(`🔄 ROLLING FEATURES DEBUG: ${playerName}`, {
+      historyLength: combinedHistory.length,
+      baselineHistoryLength: baselineHistory?.length || 0,
+      currentSeasonLength: currentSeasonHistory?.length || 0,
+      last3Points: last3.map(g => g.total_points),
+      last5Points: last5.map(g => g.total_points),
+      last8Points: last8.map(g => g.total_points),
+      last15Points: last15.map(g => g.total_points),
+      roll3_points: result.roll3_points,
+      roll5_points: result.roll5_points,
+      roll8_points: result.roll8_points,
+      roll15_points: result.roll15_points,
+      dataQuality: result.data_quality
+    });
 
     // Ensure all values are valid numbers (excluding non-numeric fields)
     Object.keys(result).forEach(key => {
@@ -203,8 +225,12 @@ export class FPLPredictor2025_26 {
   }
 
   private findPlayerBaseline(playerName: string): PlayerSeasonData | null {
+    // DEBUG: Log the search attempt
+    console.log(`🔍 SEARCHING BASELINE: Looking for "${playerName}"`);
+    
     // Try exact match first
     if (this.baselineData?.[playerName]) {
+      console.log(`✅ EXACT MATCH: Found "${playerName}" in baseline data`);
       return this.baselineData[playerName];
     }
 
@@ -260,9 +286,11 @@ export class FPLPredictor2025_26 {
     const fuzzyMatches = this.findFuzzyMatches(playerName);
     if (fuzzyMatches.length > 0) {
       const bestMatch = fuzzyMatches[0];
+      console.log(`🔍 FUZZY MATCH: Found "${bestMatch.name}" for "${playerName}" (score: ${bestMatch.score})`);
       return bestMatch.data;
     }
 
+    console.log(`❌ NO BASELINE FOUND: "${playerName}" not found in baseline data`);
     return null;
   }
 
@@ -424,6 +452,16 @@ export class FPLPredictor2025_26 {
       features.roll8_points * weights.form_weights.roll8 +
       features.roll15_points * weights.form_weights.roll15;
     
+    // DEBUG: Log the base prediction calculation
+    console.log(`🔍 BASE PREDICTION DEBUG: ${context.player.web_name}`, {
+      roll3_points: features.roll3_points,
+      roll5_points: features.roll5_points,
+      roll8_points: features.roll8_points,
+      roll15_points: features.roll15_points,
+      weights: weights.form_weights,
+      basePrediction: prediction
+    });
+    
     // 2. Minutes reliability adjustment
     const minutesReliability = Math.min(features.roll5_minutes / 90.0, 1.2);
     prediction *= minutesReliability * weights.context_weights.minutes_factor;
@@ -512,7 +550,19 @@ export class FPLPredictor2025_26 {
     
     // 13. Final bounds with more conservative minimum for new players
     const minPrediction = classification.penaltyMultiplier < 0.8 ? 0.5 : 1.0;
-    return Math.max(minPrediction, Math.min(15.0, prediction));
+    const finalPrediction = Math.max(minPrediction, Math.min(15.0, prediction));
+    
+    // DEBUG: Log the final prediction breakdown
+    console.log(`🎯 FINAL PREDICTION DEBUG: ${context.player.web_name}`, {
+      basePrediction: prediction,
+      classification: classification,
+      minPrediction,
+      finalPrediction,
+      gameweek: context.gameweek,
+      fixture: context.fixture ? `${context.is_home ? 'H' : 'A'} vs ${this.getOpponentName(context.fixture, [])}` : 'No fixture'
+    });
+    
+    return finalPrediction;
   }
 
 
