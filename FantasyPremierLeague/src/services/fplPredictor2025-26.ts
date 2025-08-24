@@ -310,9 +310,9 @@ export class FPLPredictor2025_26 {
     // DEBUG: Log what we're searching for
     console.log(`🔍 SMART MATCHING: Looking for "${playerName}" (lowercase: "${playerNameLower}")`);
     
-    // Test the specific case for Salah
-    if (playerNameLower === 'salah') {
-      console.log(`🔍 SPECIAL CASE: Looking for "Salah" - testing all baseline names`);
+    // Test the specific case for Salah and M.Salah
+    if (playerNameLower === 'salah' || playerNameLower === 'm.salah') {
+      console.log(`🔍 SPECIAL CASE: Looking for "${playerName}" - testing all baseline names`);
       for (const [name, data] of Object.entries(this.baselineData)) {
         if (name.toLowerCase().includes('salah')) {
           console.log(`🔍 FOUND SALAH VARIANT: "${name}"`);
@@ -332,6 +332,15 @@ export class FPLPredictor2025_26 {
           score += 30;
         }
         console.log(`🔍 CONTAINS MATCH: "${name}" contains "${playerName}" (score: ${score})`);
+      }
+      
+      // Handle abbreviated names like "M.Salah" -> "Mohamed Salah"
+      if (playerNameLower.includes('.')) {
+        const lastName = playerNameLower.split('.').pop(); // Get "salah" from "m.salah"
+        if (lastName && baselineNameLower.includes(lastName)) {
+          score += 60; // Higher score for abbreviated name matches
+          console.log(`🔍 ABBREVIATED MATCH: "${name}" matches "${playerName}" (lastName: "${lastName}", score: ${score})`);
+        }
       }
       
       // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
