@@ -64,13 +64,13 @@ const PlayersScreen: React.FC = () => {
       console.log(`  - PlayersModel: ${cachedData.playersModel?.length || 0}`);
       console.log(`  - Player Predictions: ${cachedData.playerPredictions?.length || 0}`);
       
-      // Use premerged model directly - no need to merge here
+      // Use premerged model directly - populate players state for filtering
       if (cachedData.playersModel && cachedData.playersModel.length > 0) {
         console.log('✅ Using pre-merged playersModel with XP data');
         
-        // Don't set players state - we'll use pre-filtered data directly
-        console.log('✅ Data loaded, will use pre-filtered data directly');
-        setPlayers([]); // Empty array to avoid unnecessary processing
+        // Populate players state for filtering operations
+        console.log('✅ Populating players state with cached data for filtering');
+        setPlayers(cachedData.playersModel);
         
         setTeams(cachedData.teams);
         setFixtures(cachedData.fixtures);
@@ -175,15 +175,16 @@ const PlayersScreen: React.FC = () => {
       }
     }
 
-    // If no pre-filtered data available or complex filters, use players state
-    if (players.length === 0) {
+    // If no pre-filtered data available or complex filters, use cached playersModel
+    const sourceData = cachedData?.playersModel || players;
+    if (sourceData.length === 0) {
       console.log('⚠️ No players data available, returning empty array');
       return [];
     }
 
     // Fallback to dynamic filtering for complex combinations
     console.log('🔄 Using dynamic filtering for complex filter combination');
-    let filtered = players.filter(player => {
+    let filtered = sourceData.filter(player => {
       // Search filter
       if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
@@ -302,7 +303,7 @@ const PlayersScreen: React.FC = () => {
     });
 
     return filtered;
-  }, [players, searchQuery, filterConfig, sortConfig, cachedData]);
+  }, [players, searchQuery, filterConfig, sortConfig, cachedData?.playersModel]);
 
   // Update displayed players when filtered results change (now shows all players)
   useEffect(() => {
