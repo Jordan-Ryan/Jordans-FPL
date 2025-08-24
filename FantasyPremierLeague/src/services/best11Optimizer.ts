@@ -193,11 +193,14 @@ export class Best11Optimizer {
     };
   }
 
-  async generateAllOptimalTeams(players: PlayerPrediction[]): Promise<{ [key: string]: OptimalTeam }> {
+  async generateAllOptimalTeams(players: PlayerPrediction[], currentGameweek: number = 2): Promise<{ [key: string]: OptimalTeam }> {
     const teams: { [key: string]: OptimalTeam } = {};
     
-    // Generate teams for each gameweek
-    for (const gameweek of [2, 3, 4] as const) {
+    // Generate teams for the next 3 gameweeks from current (not including current)
+    // This matches the Best11Screen logic: [baseGameweek + 1, baseGameweek + 2, baseGameweek + 3]
+    const nextGameweeks = [currentGameweek + 1, currentGameweek + 2, currentGameweek + 3];
+    
+    for (const gameweek of nextGameweeks) {
       const team = await this.generateOptimalTeam(players, gameweek);
       teams[`gw${gameweek}`] = team;
     }

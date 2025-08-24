@@ -280,7 +280,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
 
       // Step 5: Generate Best 11 teams
       const best11Optimizer = new Best11Optimizer();
-      const best11Teams = await best11Optimizer.generateAllOptimalTeams(predictions);
+      const best11Teams = await best11Optimizer.generateAllOptimalTeams(predictions, currentGameweek.id);
       
       console.log('🔍 LoadingScreen: Best 11 teams generated:', {
         best11TeamsLength: best11Teams ? Object.keys(best11Teams).length : 0,
