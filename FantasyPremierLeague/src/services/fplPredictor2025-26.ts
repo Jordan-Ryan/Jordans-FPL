@@ -280,6 +280,9 @@ export class FPLPredictor2025_26 {
     const playerNameLower = playerName.toLowerCase();
     const matches: Array<{name: string, data: PlayerSeasonData, score: number}> = [];
     
+    // DEBUG: Log what we're searching for
+    console.log(`🔍 SMART MATCHING: Looking for "${playerName}" (lowercase: "${playerNameLower}")`);
+    
     for (const [name, data] of Object.entries(this.baselineData)) {
       const baselineNameLower = name.toLowerCase();
       let score = 0;
@@ -291,11 +294,13 @@ export class FPLPredictor2025_26 {
         if (baselineNameLower.endsWith(playerNameLower)) {
           score += 30;
         }
+        console.log(`🔍 CONTAINS MATCH: "${name}" contains "${playerName}" (score: ${score})`);
       }
       
       // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
       if (playerNameLower.includes(baselineNameLower)) {
         score += 40;
+        console.log(`🔍 CONTAINED MATCH: "${playerName}" contains "${name}" (score: ${score})`);
       }
       
       // Check for last name matches (common case)
@@ -311,6 +316,7 @@ export class FPLPredictor2025_26 {
             if (playerWord.length > 3) {
               score += 15;
             }
+            console.log(`🔍 WORD MATCH: "${playerWord}" matches "${baselineWord}" in "${name}" (score: ${score})`);
           }
         }
       }
@@ -318,11 +324,18 @@ export class FPLPredictor2025_26 {
       // Check for common FPL naming patterns
       if (this.isCommonFPLPattern(playerName, name)) {
         score += 20;
+        console.log(`🔍 PATTERN MATCH: "${name}" matches common pattern for "${playerName}" (score: ${score})`);
       }
       
       if (score > 0) {
         matches.push({ name, data, score });
+        console.log(`🔍 ADDED MATCH: "${name}" with score ${score}`);
       }
+    }
+    
+    console.log(`🔍 SMART MATCHES FOUND: ${matches.length} matches for "${playerName}"`);
+    if (matches.length > 0) {
+      console.log(`🔍 TOP MATCHES:`, matches.slice(0, 3).map(m => `${m.name} (${m.score})`));
     }
     
     // Sort by score (highest first)
@@ -711,9 +724,16 @@ export class FPLPredictor2025_26 {
         };
       }
 
+      const baselineData = this.findPlayerBaseline(player.web_name);
+      console.log(`🔍 BASELINE DATA FOR ${player.web_name}:`, {
+        found: !!baselineData,
+        baselineHistoryLength: baselineData?.season_history?.length || 0,
+        currentHistoryLength: elementSummary.history?.length || 0
+      });
+      
       const features = this.calculateRollingFeatures(
         player.web_name,
-        this.findPlayerBaseline(player.web_name)?.season_history || [],
+        baselineData?.season_history || [],
         elementSummary.history || []
       );
       
