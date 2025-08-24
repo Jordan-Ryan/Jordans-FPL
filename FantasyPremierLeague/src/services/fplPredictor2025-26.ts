@@ -797,7 +797,7 @@ export class FPLPredictor2025_26 {
     const historyLength = elementSummary.history?.length || 0;
     
     // 2025-26 promoted teams (adjust team IDs as needed)
-    const promotedTeamIds = [13, 14, 15]; // Leicester, Ipswich, Southampton
+    const promotedTeamIds = [3, 11, 17]; // Burnley, Leeds, Sunderland
     
     // Known new to Premier League players for 2025-26 season
     const newToPLPlayers = [
