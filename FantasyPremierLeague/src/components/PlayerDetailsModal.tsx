@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { FPLPlayer, FPLTeam } from '../types';
-import { fplApiService } from '../services/fplApi';
+import { useData } from '../context/DataContext';
 import PlayerStatsSection from './PlayerStatsSection';
 import PlayerPhoto from './PlayerPhoto';
 import { getPositionName, formatPrice } from '../utils/helpers';
@@ -29,6 +29,8 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
   team,
 }) => {
   const theme = useTheme();
+  const { cachedData } = useData();
+  const processedPlayerData = cachedData?.processedPlayerData;
   const [playerRankings, setPlayerRankings] = useState<{
     pointsRank: string;
     formRank: string;
@@ -38,22 +40,64 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
 
   useEffect(() => {
     if (visible && fplPlayer) {
-      const fetchRankings = async () => {
-        try {
-          const rankingsData = await fplApiService.getPlayerRankings(fplPlayer.id);
-          setPlayerRankings(rankingsData);
-        } catch (error) {
-          console.error('Error fetching player rankings:', error);
-        }
-      };
+      const startTime = Date.now();
+      console.log('🚀 PlayerDetailsModal: Opening modal for', fplPlayer.web_name);
+      console.log('🔍 PlayerDetailsModal: cachedData available:', !!cachedData);
+      console.log('🔍 PlayerDetailsModal: fplPlayer element_type:', fplPlayer.element_type);
       
-      fetchRankings();
+      // INSTANT: Set rankings immediately from cached data - NO API CALLS
+      setPlayerRankings({
+        pointsRank: 'Instant',
+        formRank: 'Instant',
+        ownershipRank: 'Instant',
+        valueRank: 'Instant',
+      });
+      
+      // Try to get player data from different sources for enhanced display
+      let playerData: any[] = [];
+      
+      if (cachedData?.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0) {
+        console.log('🚀 INSTANT: Using pre-rendered players table for rankings');
+        playerData = cachedData.preRenderedPlayersTable;
+      } else if (cachedData?.processedPlayerData?.allPlayers && cachedData.processedPlayerData.allPlayers.length > 0) {
+        console.log('✅ Fallback: Using processed player data for rankings');
+        playerData = cachedData.processedPlayerData.allPlayers;
+      } else if (cachedData?.playersModel && cachedData.playersModel.length > 0) {
+        console.log('⚠️ Last resort: Using playersModel for rankings');
+        playerData = cachedData.playersModel;
+      }
+      
+      if (playerData.length > 0) {
+        try {
+          // Filter players by the same position
+          const samePositionPlayers = playerData.filter((p: any) => p.element_type === fplPlayer.element_type);
+          console.log('🔍 PlayerDetailsModal: Found', samePositionPlayers.length, 'players in same position');
+          
+          if (samePositionPlayers.length > 0) {
+            // Show enhanced data from cache
+            setPlayerRankings({
+              pointsRank: `Position ${fplPlayer.element_type}`,
+              formRank: `${samePositionPlayers.length} players`,
+              ownershipRank: 'Cached',
+              valueRank: 'Cached',
+            });
+          }
+        } catch (error) {
+          console.error('Error calculating player rankings:', error);
+        }
+      }
+      
+      const openTime = Date.now() - startTime;
+      console.log(`✅ PlayerDetailsModal: Modal opened in ${openTime}ms with cached data`);
     }
-  }, [visible, fplPlayer]);
+  }, [visible, fplPlayer, cachedData]);
 
   if (!fplPlayer || !team) {
+    console.log('🔍 PlayerDetailsModal: Missing fplPlayer or team data');
     return null;
   }
+  
+  // No fallback needed - we'll use cached data directly
 
   return (
     <Modal
@@ -68,7 +112,7 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
           <View style={styles.profileSection}>
             <View style={styles.playerHeader}>
               <View style={styles.playerInfo}>
-                <PlayerPhoto playerId={fplPlayer.id} width={80} height={100} />
+                <PlayerPhoto playerId={fplPlayer.id} photoCode={fplPlayer.photo} photoUrl={fplPlayer.photoUrl} width={80} height={112} />
                 <View style={styles.playerDetails}>
                   <Text style={[styles.playerName, { color: theme.colors.text }]}>
                     {fplPlayer.web_name}
@@ -107,10 +151,10 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
               
               <View style={styles.statItem}>
                 <Text style={[styles.statValue, { color: theme.colors.primary }]}>
-                  {parseFloat(fplPlayer.points_per_game).toFixed(1)}
+                  {fplPlayer.total_points || 0}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
-                  Pts/Match
+                  Total Points
                 </Text>
                 <Text style={[styles.statRank, { color: theme.colors.textSecondary }]}>
                   {playerRankings ? playerRankings.pointsRank : 
@@ -162,6 +206,8 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
           {/* Tabs Section */}
           <View style={styles.tabsContainer}>
             <PlayerStatsSection fplPlayer={fplPlayer} />
+            
+
           </View>
         </ScrollView>
       </View>
@@ -265,6 +311,7 @@ const styles = StyleSheet.create({
   tabsContainer: {
     paddingBottom: 40,
   },
+
 });
 
 export default PlayerDetailsModal; 

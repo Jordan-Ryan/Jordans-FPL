@@ -223,19 +223,24 @@ const SquadScreen: React.FC = () => {
 
   // Function to get player expected points for a specific gameweek
   const getPlayerXP = (playerId: number, gameweek: number) => {
-    // Get the player from cached predictions
-    const playerPrediction = cachedData?.playerPredictions?.find(p => p.player_id === playerId);
-    if (!playerPrediction) return 0;
-    
-    // Map gameweek to the correct XP property for next 3 gameweeks from current
-    if (gameweek === baseGameweek + 1) {
-      return playerPrediction.gw2_xp || 0;
-    } else if (gameweek === baseGameweek + 2) {
-      return playerPrediction.gw3_xp || 0;
-    } else if (gameweek === baseGameweek + 3) {
-      return playerPrediction.gw4_xp || 0;
+    // Get the player from cached predictions (using id instead of player_id)
+    const playerPrediction = cachedData?.playerPredictions?.find(p => p.id === playerId);
+    if (!playerPrediction) {
+      console.log(`⚠️ No XP data found for player ${playerId} in gameweek ${gameweek}`);
+      return 0;
     }
     
+    // Map gameweek to the correct XP property for next 3 gameweeks from current
+    // Using the actual property names: gwp1_xp, gwp2_xp, gwp3_xp
+    if (gameweek === baseGameweek + 1) {
+      return playerPrediction.gwp1_xp || 0;
+    } else if (gameweek === baseGameweek + 2) {
+      return playerPrediction.gwp2_xp || 0;
+    } else if (gameweek === baseGameweek + 3) {
+      return playerPrediction.gwp3_xp || 0;
+    }
+    
+    console.log(`⚠️ Gameweek ${gameweek} not supported for XP lookup`);
     return 0;
   };
 
@@ -527,7 +532,6 @@ const SquadScreen: React.FC = () => {
                   playerId={startingXI[0].id}
                   width={55}
                   height={70}
-                  showName={false}
                 />
                 <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                   {getPlayerById(startingXI[0].id)?.web_name || 'Player'}
@@ -563,7 +567,6 @@ const SquadScreen: React.FC = () => {
                     playerId={player.id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -600,7 +603,6 @@ const SquadScreen: React.FC = () => {
                     playerId={player.id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -637,7 +639,6 @@ const SquadScreen: React.FC = () => {
                     playerId={player.id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -679,7 +680,6 @@ const SquadScreen: React.FC = () => {
                   playerId={player.id}
                   width={55}
                   height={70}
-                  showName={false}
                 />
                 <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                   {getPlayerById(player.id)?.web_name || 'Player'}
@@ -761,12 +761,12 @@ const SquadScreen: React.FC = () => {
       {/* Player Details Modal */}
       <PlayerDetailsModal
         visible={showPlayerDetails}
-        player={selectedPlayer}
+        fplPlayer={selectedPlayer}
+        team={selectedPlayer ? getTeamById(selectedPlayer.team) : null}
         onClose={() => {
           setShowPlayerDetails(false);
           setSelectedPlayer(null);
         }}
-        fplPlayer={selectedPlayer}
       />
     </View>
   );

@@ -41,13 +41,20 @@ const Best11Screen: React.FC = () => {
     console.log('🔍 Best11Screen: useEffect triggered', {
       hasCachedData: !!cachedData,
       hasBest11Teams: !!cachedData?.best11Teams,
+      hasPreRenderedBest11: !!cachedData?.preRenderedBest11Data,
       best11TeamsKeys: cachedData?.best11Teams ? Object.keys(cachedData.best11Teams) : [],
       currentGameweek
     });
     
-    if (cachedData && cachedData.best11Teams) {
-      // The component will automatically use the cached data
-      setLoading(false);
+    if (cachedData) {
+      // Use pre-rendered data if available for instant display
+      if (cachedData.preRenderedBest11Data) {
+        console.log('🚀 Using pre-rendered Best 11 data for instant display!');
+        setLoading(false);
+      } else if (cachedData.best11Teams) {
+        console.log('✅ Using cached best11Teams data');
+        setLoading(false);
+      }
       
       // Update currentGameweek to next gameweek if it's still on current
       const baseGW = cachedData.currentGameweek?.id || 2;
@@ -304,7 +311,6 @@ const Best11Screen: React.FC = () => {
                     playerId={player.player_id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {player.name}
@@ -341,9 +347,7 @@ const Best11Screen: React.FC = () => {
                   
                   <PlayerPhoto 
                     playerId={player.player_id}
-                    width={55}
-                    height={70}
-                    showName={false}
+                    size={55}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {player.name}
@@ -382,7 +386,6 @@ const Best11Screen: React.FC = () => {
                     playerId={player.player_id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {player.name}
@@ -420,7 +423,6 @@ const Best11Screen: React.FC = () => {
                     playerId={player.player_id}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {player.name}
@@ -443,9 +445,7 @@ const Best11Screen: React.FC = () => {
               <TouchableOpacity key={player.player_id} style={styles.playerCard} onPress={() => handlePlayerPress(player)}>
                 <PlayerPhoto 
                   playerId={player.player_id}
-                  width={55}
-                  height={70}
-                  showName={false}
+                  size={55}
                 />
                 <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                   {player.name}

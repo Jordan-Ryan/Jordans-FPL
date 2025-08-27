@@ -1,389 +1,257 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
-import { fplApiService } from '../services/fplApi';
-import { FPLPredictor2025_26 } from '../services/fplPredictor2025-26';
-import { Best11Optimizer } from '../services/best11Optimizer';
-import { OptimalTeamBuilder } from '../services/optimalTeamBuilder';
+import { comprehensiveDataService } from '../services/comprehensiveDataService';
 
-interface LoadingScreenProps {
-  onComplete: () => void;
-}
-
-export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
+const LoadingScreen: React.FC = () => {
   const theme = useTheme();
   const { setCachedData, setIsLoading } = useData();
   const [progress, setProgress] = useState('Initializing...');
   const [progressPercentage, setProgressPercentage] = useState(0);
-
-
-
-  // Merge predictions with original FPL data to get both expected points and FPL stats
-  const mergePredictionsWithFPLData = (predictions: any[], fplPlayers: any[]) => {
-    console.log('🔍 LoadingScreen: Merging data:', {
-      predictionsLength: predictions.length,
-      fplPlayersLength: fplPlayers.length,
-      firstPrediction: predictions[0],
-      firstFPLPlayer: fplPlayers[0],
-      predictionKeys: predictions[0] ? Object.keys(predictions[0]) : [],
-      fplPlayerKeys: fplPlayers[0] ? Object.keys(fplPlayers[0]) : []
-    });
-
-    const mergedData = predictions.map(prediction => {
-      // Try multiple ways to match players
-      let fplPlayer = fplPlayers.find(p => p.id === prediction.player_id);
-      
-      if (!fplPlayer) {
-        // Try matching by name as fallback
-        fplPlayer = fplPlayers.find(p => 
-          p.web_name?.toLowerCase() === prediction.name?.toLowerCase() ||
-          p.first_name?.toLowerCase() === prediction.name?.toLowerCase() ||
-          p.second_name?.toLowerCase() === prediction.name?.toLowerCase()
-        );
-      }
-      
-      if (!fplPlayer) {
-        console.warn(`⚠️ No FPL player found for prediction: ${prediction.name || prediction.player_id}`);
-        // Return a minimal merged object with prediction data
-        return {
-          id: prediction.player_id,
-          web_name: prediction.name,
-          element_type: prediction.position === 'Goalkeeper' ? 1 : 
-                       prediction.position === 'Defender' ? 2 : 
-                       prediction.position === 'Midfielder' ? 3 : 4,
-          now_cost: prediction.price ? prediction.price * 10 : 0,
-          team: prediction.team,
-          form: '0.0',
-          selected_by_percent: '0.0',
-          event_points: 0,
-          total_points: 0,
-          ict_index: '0.0',
-          transfers_in: 0,
-          transfers_out: 0,
-          dreamteam_count: 0,
-          ...prediction // Include all prediction fields
-        };
-      }
-
-      // Merge FPL data with prediction data (prediction data takes priority for expected points)
-      return {
-        ...fplPlayer, // All original FPL fields (form, selected_by_percent, total_points, etc.)
-        ...prediction, // Expected points and other prediction fields
-        // Ensure we keep the FPL ID format for compatibility
-        id: fplPlayer.id,
-        web_name: fplPlayer.web_name,
-        element_type: fplPlayer.element_type,
-        now_cost: fplPlayer.now_cost,
-        team: fplPlayer.team
-      };
-    });
-
-    console.log('🔍 LoadingScreen: Merged data sample:', {
-      mergedLength: mergedData.length,
-      firstMerged: mergedData[0],
-      hasFPLFields: !!mergedData[0]?.form,
-      hasExpectedPoints: !!mergedData[0]?.gw2_xp,
-      mergedKeys: mergedData[0] ? Object.keys(mergedData[0]) : []
-    });
-
-    return mergedData;
-  };
-
-  // Pre-process all player data for instant Players tab loading
-  const preprocessPlayerData = (playerData: any[]) => {
-    
-    // Pre-sort by different criteria (now using merged data which has both FPL and prediction fields)
-    const sortedByTotalXP = [...playerData].sort((a, b) => (b.total_3gw_xp || 0) - (a.total_3gw_xp || 0));
-    const sortedByName = [...playerData].sort((a, b) => {
-      const nameA = a.web_name || a.name || '';
-      const nameB = b.web_name || b.name || '';
-      return nameA.localeCompare(nameB);
-    });
-    const sortedByForm = [...playerData].sort((a, b) => (parseFloat(b.form || '0') || 0) - (parseFloat(a.form || '0') || 0));
-    const sortedByPrice = [...playerData].sort((a, b) => (a.now_cost || (a.price ? a.price * 10 : 0) || 0) - (b.now_cost || (b.price ? b.price * 10 : 0) || 0));
-    const sortedByPoints = [...playerData].sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
-    
-    // Pre-filter by position (using both FPL element_type and prediction position)
-    const goalkeepers = playerData.filter(p => p.element_type === 1 || p.position === 'Goalkeeper');
-    const defenders = playerData.filter(p => p.element_type === 2 || p.position === 'Defender');
-    const midfielders = playerData.filter(p => p.element_type === 3 || p.position === 'Midfielder');
-    const forwards = playerData.filter(p => p.element_type === 4 || p.position === 'Forward');
-    
-    // Pre-filter by club (using team ID for consistency)
-    const playersByClub = playerData.reduce((acc, player) => {
-      const clubId = player.team;
-      if (!acc[clubId]) acc[clubId] = [];
-      acc[clubId].push(player);
-      return acc;
-    }, {} as { [key: number]: any[] });
-    
-    // Pre-calculate price ranges (using FPL now_cost format)
-    const priceRanges = {
-      '4.0-5.0': playerData.filter(p => {
-        const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-        return cost >= 40 && cost <= 50;
-      }),
-      '5.5-6.5': playerData.filter(p => {
-        const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-        return cost >= 55 && cost <= 65;
-      }),
-      '7.0-8.0': playerData.filter(p => {
-        const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-        return cost >= 70 && cost <= 80;
-      }),
-      '8.5-9.5': playerData.filter(p => {
-        const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-        return cost >= 85 && cost <= 95;
-      }),
-      '10.0+': playerData.filter(p => {
-        const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-        return cost >= 100;
-      }),
-    };
-
-    // Pre-calculate common filter combinations for instant loading
-    const preFilteredData = {
-      // Default view (no filters, sorted by XP)
-      default: sortedByTotalXP,
-      
-      // Position-based views
-      positionFiltered: {
-        goalkeepers: sortedByTotalXP.filter(p => p.element_type === 1 || p.position === 'Goalkeeper'),
-        defenders: sortedByTotalXP.filter(p => p.element_type === 2 || p.position === 'Defender'),
-        midfielders: sortedByTotalXP.filter(p => p.element_type === 3 || p.position === 'Midfielder'),
-        forwards: sortedByTotalXP.filter(p => p.element_type === 4 || p.position === 'Forward'),
-      },
-      
-      // Price-based views (sorted by XP within each range)
-      priceFiltered: {
-        '4.0-5.0': sortedByTotalXP.filter(p => {
-          const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-          return cost >= 40 && cost <= 50;
-        }),
-        '5.5-6.5': sortedByTotalXP.filter(p => {
-          const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-          return cost >= 55 && cost <= 65;
-        }),
-        '7.0-8.0': sortedByTotalXP.filter(p => {
-          const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-          return cost >= 70 && cost <= 80;
-        }),
-        '8.5-9.5': sortedByTotalXP.filter(p => {
-          const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-          return cost >= 85 && cost <= 95;
-        }),
-        '10.0+': sortedByTotalXP.filter(p => {
-          const cost = p.now_cost || (p.price ? p.price * 10 : 0);
-          return cost >= 100;
-        }),
-      }
-    };
-    
-    return {
-      allPlayers: playerData,
-      sorted: {
-        byTotalXP: sortedByTotalXP,
-        byName: sortedByName,
-        byForm: sortedByForm,
-        byPrice: sortedByPrice,
-        byPoints: sortedByPoints,
-      },
-      filtered: {
-        byPosition: {
-          goalkeepers,
-          defenders,
-          midfielders,
-          forwards,
-        },
-        byClub: playersByClub,
-        byPrice: priceRanges,
-      },
-      preFiltered: preFilteredData, // New pre-filtered data for instant loading
-      metadata: {
-        totalPlayers: playerData.length,
-        positions: {
-          goalkeepers: goalkeepers.length,
-          defenders: defenders.length,
-          midfielders: midfielders.length,
-          forwards: forwards.length,
-        },
-        priceRanges: Object.fromEntries(
-          Object.entries(priceRanges).map(([range, players]) => [range, players.length])
-        ),
-      }
-    };
-  };
+  const [currentStep, setCurrentStep] = useState(0);
+  const [totalSteps] = useState(9);
+  const [playerProgress, setPlayerProgress] = useState(0);
+  const [totalPlayers, setTotalPlayers] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    initializeApp();
+    loadAllData();
   }, []);
 
+  const updateProgress = (step: number, stepDescription: string, stepPercentage: number) => {
+    setCurrentStep(step);
+    setProgress(stepDescription);
+    setProgressPercentage(stepPercentage);
+  };
 
-
-  const initializeApp = async () => {
+  const loadAllData = async () => {
     try {
-      setIsLoading(true);
-      setProgress('Loading FPL data...');
-      setProgressPercentage(10);
-
-      // Step 1: Load basic FPL data
-      const currentGameweek = await fplApiService.getCurrentGameweek();
-      const allPlayers = await fplApiService.fetchAllPlayers();
-      const allTeams = await fplApiService.fetchAllTeams();
-      const fixturesData = await fplApiService.fetchFixturesData();
-
-      setProgress('Initializing predictor...');
-      setProgressPercentage(20);
-
-      // Step 2: Initialize predictor
-      const predictor = new FPLPredictor2025_26();
-
-      setProgress('Generating player predictions...');
-      setProgressPercentage(40);
-
-      // Step 3: Generate player predictions with progress updates
-      console.log('🔍 LoadingScreen: Starting prediction generation...');
-      const predictions = await predictor.predictAllPlayers(fplApiService, (current, total) => {
-        const percentage = 40 + (current / total) * 50; // 40% to 90%
-        setProgressPercentage(Math.round(percentage));
-        setProgress(`Generating predictions... ${current}/${total} players`);
-        console.log(`🔍 LoadingScreen: Prediction progress: ${current}/${total} (${Math.round(percentage)}%)`);
+      // Step 1: Fetch FPL player data
+      updateProgress(1, 'Fetching player data from FPL...', 10);
+      const data = await comprehensiveDataService.loadAllData((step: number, description: string, percentage: number) => {
+        // Handle special case for player predictions step
+        if (step === 5 && description.includes('Calculating XP for player')) {
+          // Extract player progress from description
+          const match = description.match(/player (\d+)\/(\d+)/);
+          if (match) {
+            const current = parseInt(match[1]);
+            const total = parseInt(match[2]);
+            setPlayerProgress(current);
+            setTotalPlayers(total);
+          }
+        } else {
+          // Reset player progress for other steps
+          setPlayerProgress(0);
+          setTotalPlayers(0);
+        }
+        
+        updateProgress(step, description, percentage);
       });
-
-      console.log('🔍 LoadingScreen: Predictions generated:', {
-        predictionsLength: predictions?.length,
-        firstPrediction: predictions?.[0],
-        hasExpectedPoints: predictions?.[0]?.gw2_xp !== undefined,
-        predictionsType: Array.isArray(predictions) ? 'Array' : typeof predictions,
-        firstPredictionKeys: predictions?.[0] ? Object.keys(predictions[0]) : []
-      });
-
-      // Validate that we have predictions with expected points
-      if (!predictions || predictions.length === 0) {
-        throw new Error('No predictions generated - prediction system failed');
+      
+      console.log('🔍 Data received from comprehensive service:');
+      console.log('  - Players count:', data.players.length);
+      console.log('  - Sample player (first):', data.players[0] ? {
+        name: data.players[0].web_name,
+        gwp1_xp: data.players[0].gwp1_xp,
+        total_3gw_xp: data.players[0].total_3gw_xp
+      } : 'No players');
+      
+      // Check specific players for XP values
+      const salah = data.players.find(p => p.web_name === 'M.Salah');
+      const raya = data.players.find(p => p.web_name === 'Raya');
+      
+      if (salah) {
+        console.log('🔍 Salah XP data:', {
+          gwp1_xp: salah.gwp1_xp,
+          gwp2_xp: salah.gwp2_xp,
+          gwp3_xp: salah.gwp3_xp,
+          total_3gw_xp: salah.total_3gw_xp
+        });
       }
-
-      if (!predictions[0]?.gw2_xp && !predictions[0]?.gw3_xp && !predictions[0]?.gw4_xp) {
-        throw new Error('Predictions generated but missing expected points - data structure issue');
+      
+      if (raya) {
+        console.log('🔍 Raya XP data:', {
+          gwp1_xp: raya.gwp1_xp,
+          gwp2_xp: raya.gwp2_xp,
+          gwp3_xp: raya.gwp3_xp,
+          total_3gw_xp: raya.total_3gw_xp
+        });
       }
-
-      setProgress('Building optimal teams...');
-      setProgressPercentage(85);
-
-      // Step 4: Generate Optimal Teams
-      const teamBuilder = new OptimalTeamBuilder();
-      const optimalTeams = teamBuilder.generateAllOptimalTeams(predictions);
-
-      setProgress('Building Best 11 teams...');
-      setProgressPercentage(90);
-
-      // Step 5: Generate Best 11 teams
-      const best11Optimizer = new Best11Optimizer();
-      const best11Teams = await best11Optimizer.generateAllOptimalTeams(predictions, currentGameweek.id);
       
-      console.log('🔍 LoadingScreen: Best 11 teams generated:', {
-        best11TeamsLength: best11Teams ? Object.keys(best11Teams).length : 0,
-        best11TeamsKeys: best11Teams ? Object.keys(best11Teams) : [],
-        firstTeam: best11Teams ? Object.values(best11Teams)[0] : null
+      console.log('🔍 Setting cached data...');
+      setCachedData({
+        // Map to the existing DataContext structure
+        fplPlayers: data.players,
+        teams: data.teams,
+        fixtures: data.fixtures,
+        currentGameweek: { id: data.currentGameweek },
+        playerPredictions: data.players, // Players already have XP data
+        best11Teams: data.best11Teams,
+        playersModel: data.players, // Use comprehensive players as model
+        processedPlayerData: {
+          allPlayers: data.players,
+          metadata: {
+            totalPlayers: data.players.length
+          }
+        },
+        // Add the pre-rendered data that Players screen expects
+        preRenderedPlayersTable: data.players,
+        preRenderedBest11Data: data.best11Teams,
+        preRenderedOptimalTeamsData: [],
+        preRenderedFixturesData: data.fixtures,
+        preRenderedTeamData: data.teams,
+        timestamp: data.timestamp
       });
-
-      setProgress('Pre-processing player data...');
-      setProgressPercentage(95);
-
-      // Step 6: Merge predictions with original FPL data and pre-process
-      setProgress('Merging player data...');
-      const mergedPlayerData = mergePredictionsWithFPLData(predictions, allPlayers);
-      const processedPlayerData = preprocessPlayerData(mergedPlayerData);
       
-      console.log('🔍 LoadingScreen: Pre-processed player data:', {
-        totalPlayers: processedPlayerData.metadata?.totalPlayers,
-        allPlayersLength: processedPlayerData.allPlayers?.length,
-        sortedLength: processedPlayerData.sorted?.byTotalXP?.length,
-        firstPlayer: processedPlayerData.allPlayers?.[0]
-      });
-
-      setProgress('Finalizing...');
-      setProgressPercentage(100);
-
-      // Step 7: Set all data
-      const appData = {
-        currentGameweek,
-        fplPlayers: allPlayers,
-        teams: allTeams,
-        fixtures: fixturesData,
-        playerPredictions: predictions,
-        best11Teams,
-        optimalTeams,
-        playersModel: mergedPlayerData, // Use merged data instead of just predictions
-        processedPlayerData,
-        timestamp: Date.now()
-      };
+      console.log('🔍 Cached data verification:');
+      const cachedPlayer = data.players.find((p: any) => p.web_name === 'M.Salah');
+      if (cachedPlayer) {
+        console.log('🔍 Salah in data to be cached:', {
+          gwp1_xp: cachedPlayer.gwp1_xp,
+          gwp2_xp: cachedPlayer.gwp2_xp,
+          gwp3_xp: cachedPlayer.gwp3_xp,
+          total_3gw_xp: cachedPlayer.total_3gw_xp
+        });
+      }
       
-      console.log('🔍 LoadingScreen: Setting app data:', {
-        hasProcessedPlayerData: !!appData.processedPlayerData,
-        processedPlayerDataKeys: Object.keys(appData.processedPlayerData || {}),
-        predictionsLength: appData.playerPredictions?.length,
-        fplPlayersLength: appData.fplPlayers?.length
-      });
-
-      setCachedData(appData);
+      const cachedRaya = data.players.find((p: any) => p.web_name === 'Raya');
+      if (cachedRaya) {
+        console.log('🔍 Raya in data to be cached:', {
+          gwp1_xp: cachedRaya.gwp1_xp,
+          gwp2_xp: cachedRaya.gwp2_xp,
+          gwp3_xp: cachedRaya.gwp3_xp,
+          total_3gw_xp: cachedRaya.total_3gw_xp
+        });
+      }
+      
+      console.log('✅ Data caching complete!');
+      
+      // Debug: Check what's in the cache after setting
+      console.log('🔍 Cache set complete. Checking preRenderedPlayersTable...');
+      console.log('🔍 preRenderedPlayersTable length:', data.players.length);
+      if (data.players && data.players.length > 0) {
+        const cachedPlayer = data.players[0];
+        console.log('🔍 First cached player:', {
+          id: cachedPlayer.id,
+          name: cachedPlayer.web_name,
+          next3Fixtures: cachedPlayer.next3Fixtures,
+          hasNext3Fixtures: !!cachedPlayer.next3Fixtures,
+          next3FixturesLength: cachedPlayer.next3Fixtures?.length || 0
+        });
+      }
+      
+      updateProgress(9, 'Complete!', 100);
+      
+      // Signal that loading is complete
       setIsLoading(false);
       
-      // Small delay to show completion
-      setTimeout(() => {
-        onComplete();
-      }, 500);
-    } catch (error) {
-      console.error('❌ Error initializing app:', error);
-      console.error('❌ Error details:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace',
-        errorType: typeof error
-      });
-      setProgress('Failed to load app data. Please restart the app.');
+    } catch (err) {
+      console.error('❌ Error loading data:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 
-
+  if (error) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <Text style={[styles.errorText, { color: theme.colors.error }]}>
+          ❌ Error Loading App
+        </Text>
+        <Text style={[styles.errorDetails, { color: theme.colors.textSecondary }]}>
+          {error}
+        </Text>
+        <Text style={[styles.retryText, { color: theme.colors.textSecondary }]}>
+          Please restart the app to try again
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.content}>
         <Text style={[styles.title, { color: theme.colors.text }]}>
-          Fantasy Premier League
+          FPL Optimizer
         </Text>
         
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-          Loading your FPL experience...
+          Loading your fantasy football data...
         </Text>
-
+        
         <View style={styles.progressContainer}>
+          <View style={styles.stepInfo}>
+            <Text style={[styles.stepText, { color: theme.colors.textSecondary }]}>
+              Step {currentStep} of {totalSteps}
+            </Text>
+          </View>
+          
           <View style={[styles.progressBar, { backgroundColor: theme.colors.surface }]}>
             <View 
               style={[
                 styles.progressFill, 
                 { 
                   backgroundColor: theme.colors.primary,
-                  width: `${progressPercentage}%`,
+                  width: `${progressPercentage}%`
                 }
               ]} 
             />
           </View>
-          <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}>
-            {Math.round(progressPercentage)}%
-          </Text>
+          
+          <View style={styles.progressInfo}>
+            <Text style={[styles.progressText, { color: theme.colors.textSecondary }]}>
+              {progressPercentage}%
+            </Text>
+            {playerProgress > 0 && totalPlayers > 0 && (
+              <Text style={[styles.playerProgressText, { color: theme.colors.textSecondary }]}>
+                Players: {playerProgress}/{totalPlayers}
+              </Text>
+            )}
+          </View>
         </View>
-
-        <Text style={[styles.statusText, { color: theme.colors.text }]}>
+        
+        <View style={styles.stepsBreakdown}>
+          <Text style={[styles.stepsTitle, { color: theme.colors.textSecondary }]}>
+            Loading Steps:
+          </Text>
+          {[
+            'Fetching player data',
+            'Fetching team data', 
+            'Fetching fixture data',
+            'Getting current gameweek',
+            'Calculating expected points',
+            'Sorting players',
+            'Pre-calculating display data',
+            'Pre-loading player photos',
+            'Complete!'
+          ].map((stepText, index) => (
+            <View key={index} style={styles.stepRow}>
+              <Text style={[
+                styles.stepItem, 
+                { 
+                  color: index < currentStep ? theme.colors.primary : theme.colors.textSecondary,
+                  fontWeight: index < currentStep ? '600' : '400'
+                }
+              ]}>
+                {index < currentStep ? '✓' : '○'} {stepText}
+              </Text>
+            </View>
+          ))}
+        </View>
+        
+        <Text style={[styles.statusText, { color: theme.colors.textSecondary }]}>
           {progress}
         </Text>
-
-
+        
+        <ActivityIndicator 
+          size="large" 
+          color={theme.colors.primary} 
+          style={styles.spinner}
+        />
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -396,20 +264,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 16,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     marginBottom: 40,
     textAlign: 'center',
+    lineHeight: 24,
   },
-
   progressContainer: {
     width: '100%',
-    marginBottom: 30,
+    marginBottom: 24,
   },
   progressBar: {
     height: 8,
@@ -422,14 +290,70 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   progressText: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
   statusText: {
     fontSize: 16,
-    marginBottom: 30,
+    marginBottom: 32,
     textAlign: 'center',
   },
-
-
+  spinner: {
+    marginTop: 16,
+  },
+  errorText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  errorDetails: {
+    fontSize: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  retryText: {
+    fontSize: 14,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  stepInfo: {
+    marginBottom: 8,
+  },
+  stepText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  playerProgressText: {
+    fontSize: 14,
+  },
+  stepsBreakdown: {
+    width: '100%',
+    marginTop: 24,
+    paddingHorizontal: 10,
+  },
+  stepsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stepItem: {
+    fontSize: 14,
+  },
 });
+
+export default LoadingScreen;

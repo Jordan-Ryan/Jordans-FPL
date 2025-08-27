@@ -1,69 +1,95 @@
-import React, { useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
-import { Image as RNImage } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Image, StyleSheet, View, ImageResizeMode } from 'react-native';
 import { fplApiService } from '../services/fplApi';
 
 interface PlayerPhotoProps {
   playerId: number;
-  width: number;
-  height: number;
-  showName?: boolean;
+  photoCode?: string;
+  photoUrl?: string;
+  width?: number;
+  height?: number;
+  size?: number; // Keep for backward compatibility
+  resizeMode?: ImageResizeMode;
   style?: any;
 }
 
-const PlayerPhoto: React.FC<PlayerPhotoProps> = ({ playerId, width, height, showName = false, style }) => {
-  const [imageFailed, setImageFailed] = useState(false);
-  const [fplPlayer, setFplPlayer] = useState<any>(null);
+const PlayerPhoto: React.FC<PlayerPhotoProps> = ({ 
+  playerId, 
+  photoCode, 
+  photoUrl, 
+  width,
+  height,
+  size, // For backward compatibility
+  resizeMode = 'cover', // Default to cover
+  style 
+}) => {
+  const [localPhotoPath, setLocalPhotoPath] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
 
-  // Get the photo URL from FPL API
-  React.useEffect(() => {
-    const getPlayerPhoto = async () => {
-      try {
-        const player = await fplApiService.getPlayerById(playerId);
-        setFplPlayer(player);
-      } catch (error) {
-        console.error('Error fetching player photo:', error);
-        setImageFailed(true);
-      }
-    };
+  // Use size for both dimensions if provided, otherwise use width/height
+  const finalWidth = width || size || 55;
+  const finalHeight = height || size || 70;
 
-    if (playerId && playerId !== 0) {
-      getPlayerPhoto();
-    } else {
-      setImageFailed(true);
+  useEffect(() => {
+    // Only try to get local photo path if we don't have photoUrl
+    if (!photoUrl) {
+      const getLocalPath = async () => {
+        try {
+          const path = await fplApiService.getLocalPhotoPath(playerId);
+          if (path) {
+            setLocalPhotoPath(path);
+          }
+        } catch (error) {
+          console.log(`PlayerPhoto: No local photo found for player ${playerId}`);
+        }
+      };
+      getLocalPath();
     }
-  }, [playerId]);
+  }, [playerId, photoUrl]);
 
-  if (imageFailed || !fplPlayer?.photo) {
+  // If we have a photoUrl, use it directly
+  if (photoUrl) {
     return (
       <Image
-        source={require('../../assets/Ghost Player.png')}
-        style={[styles.image, { width, height }, style]}
-        resizeMode="cover"
+        source={{ uri: `file://${photoUrl}` }}
+        style={[styles.image, { width: finalWidth, height: finalHeight }, style]}
+        resizeMode={resizeMode}
+        onError={() => {
+          console.log(`PlayerPhoto: Local photo failed for player ${playerId}, using ghost`);
+          setImageError(true);
+        }}
       />
     );
   }
 
-  const photoUrl = fplApiService.getPlayerPhotoUrl(fplPlayer.photo);
+  // If we have a local photo path, use it
+  if (localPhotoPath && !imageError) {
+    return (
+      <Image
+        source={{ uri: `file://${localPhotoPath}` }}
+        style={[styles.image, { width: finalWidth, height: finalHeight }, style]}
+        resizeMode={resizeMode}
+        onError={() => {
+          console.log(`PlayerPhoto: Local photo failed for player ${playerId}, using ghost`);
+          setImageError(true);
+        }}
+      />
+    );
+  }
 
+  // Final fallback - this should rarely happen now since ghost image is stored locally
   return (
-    <Image 
-      source={{ uri: photoUrl }} 
-      style={[styles.image, { width, height }, style]}
-      onError={() => setImageFailed(true)}
-      defaultSource={require('../../assets/Ghost Player.png')}
+    <Image
+      source={{ uri: `file://${fplApiService.photoStorageDir}ghost_player.png` }}
+      style={[styles.image, { width: finalWidth, height: finalHeight }, style]}
+      resizeMode={resizeMode}
     />
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-  },
   image: {
-    borderRadius: 8,
+    borderRadius: 8, // Reduced from 20 to be less circular
   },
 });
 

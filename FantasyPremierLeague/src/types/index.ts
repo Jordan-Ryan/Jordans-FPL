@@ -26,6 +26,8 @@ export interface FPLPlayer {
   status: string;
   special: boolean;
   chance_of_playing_next_round: number | null;
+  photo?: string; // Add photo property for player images
+  photoUrl?: string; // Pre-loaded photo URL for instant display
   // Squad-specific properties
   squad_position?: number;
   is_starter?: boolean;
@@ -33,14 +35,14 @@ export interface FPLPlayer {
   is_vice_captain?: boolean;
   multiplier?: number;
   // Expected Points properties (extended to 8 gameweeks)
-  gw2_xp?: number;
-  gw3_xp?: number;
-  gw4_xp?: number;
-  gw5_xp?: number;
-  gw6_xp?: number;
-  gw7_xp?: number;
-  gw8_xp?: number;
-  gw9_xp?: number;
+  gwp1_xp?: number;
+  gwp2_xp?: number;
+  gwp3_xp?: number;
+  gwp4_xp?: number;
+  gwp5_xp?: number;
+  gwp6_xp?: number;
+  gwp7_xp?: number;
+  gwp8_xp?: number;
   total_3gw_xp?: number;
   total_8gw_xp?: number;
   // Gameweek-specific points from FPL API
@@ -97,16 +99,17 @@ export interface PlayerPrediction {
   team: string;
   position: 'GK' | 'DEF' | 'MID' | 'FWD';
   price: number;
+  photoUrl?: string; // Pre-loaded photo URL for instant display
   
-  // Extend to 8 gameweeks for strategic planning
-  gw2_xp: number;
-  gw3_xp: number;
-  gw4_xp: number;
-  gw5_xp: number;
-  gw6_xp: number;
-  gw7_xp: number;
-  gw8_xp: number;
-  gw9_xp: number;
+  // Extend to 8 gameweeks for strategic planning (GWP1 = next gameweek, GWP2 = next+1, etc.)
+  gwp1_xp: number;
+  gwp2_xp: number;
+  gwp3_xp: number;
+  gwp4_xp: number;
+  gwp5_xp: number;
+  gwp6_xp: number;
+  gwp7_xp: number;
+  gwp8_xp: number;
   
   total_3gw_xp: number; // Keep for backward compatibility
   total_8gw_xp: number; // Sum of all 8 gameweeks
@@ -117,6 +120,19 @@ export interface PlayerPrediction {
     home_away: 'H' | 'A';
     difficulty?: number;
     expected_points: number;
+    // Additional fields for XP tab fixture display
+    is_home: boolean;
+    team_h: number;
+    team_a: number;
+    team_h_difficulty: number;
+    team_a_difficulty: number;
+  }>;
+  
+  // Teams array for fixture display
+  teams: Array<{
+    id: number;
+    name: string;
+    short_name: string;
   }>;
 }
 

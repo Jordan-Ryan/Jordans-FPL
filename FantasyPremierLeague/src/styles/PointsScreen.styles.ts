@@ -170,14 +170,14 @@ export const styles = StyleSheet.create({
   playerCard: {
     backgroundColor: theme.colors.cardBackground,
     borderRadius: theme.borderRadius.lg,
-    paddingTop: theme.spacing.xs,
+    paddingTop: 0,
     paddingHorizontal: 0,
-    paddingBottom: theme.spacing.md,
+    paddingBottom: theme.spacing.xs,
     alignItems: 'center',
     width: 75,
     height: 100,
     ...theme.shadows.small,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end', // Push everything to the bottom
   },
   
   playerName: {
@@ -186,9 +186,11 @@ export const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
     textAlign: 'center',
     marginBottom: 0,
+    marginTop: 0,
     width: '100%',
     backgroundColor: theme.colors.white,
     paddingHorizontal: 0,
+    paddingVertical: 0,
     borderRadius: 0,
   },
   
@@ -202,6 +204,7 @@ export const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: theme.colors.white,
     paddingHorizontal: 0,
+    paddingVertical: 0,
     borderRadius: 0,
   },
   

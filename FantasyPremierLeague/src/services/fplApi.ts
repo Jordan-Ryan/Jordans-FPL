@@ -1,9 +1,215 @@
 import { FPLBootstrapData, FPLPlayer, FPLTeam, Fixture } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 
 // FPL API service with real endpoints
 export const fplApiService = {
   // Base URL for FPL API
   baseUrl: 'https://fantasy.premierleague.com/api',
+  
+  // Local storage directory for photos
+  photoStorageDir: `${FileSystem.documentDirectory}player_photos/`,
+  
+  // Initialize photo storage directory
+  async initPhotoStorage(): Promise<void> {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(this.photoStorageDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(this.photoStorageDir, { intermediates: true });
+        console.log('📁 Created photo storage directory');
+      }
+      
+      // Store ghost image in local storage for players without photos
+      await this.storeGhostImage();
+    } catch (error) {
+      console.error('❌ Error creating photo storage directory:', error);
+    }
+  },
+
+  // Store ghost image in local photo storage
+  async storeGhostImage(): Promise<string | null> {
+    try {
+      const ghostFileName = 'ghost_player.png';
+      const ghostFilePath = `${this.photoStorageDir}${ghostFileName}`;
+      
+      // Check if ghost image already exists
+      const fileInfo = await FileSystem.getInfoAsync(ghostFilePath);
+      if (fileInfo.exists) {
+        console.log('👻 Ghost image already exists in local storage');
+        return ghostFilePath;
+      }
+      
+      // Create a simple base64-encoded ghost image (simple gray placeholder)
+      // This avoids the asset bundling issues
+      const base64Image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+      
+      await FileSystem.writeAsStringAsync(ghostFilePath, base64Image, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+      
+      console.log('👻 Ghost image stored in local storage:', ghostFilePath);
+      return ghostFilePath;
+    } catch (error) {
+      console.error('❌ Error storing ghost image:', error);
+      return null;
+    }
+  },
+
+  // Get ghost image path from local storage
+  async getGhostImagePath(): Promise<string | null> {
+    try {
+      const ghostFileName = 'ghost_player.png';
+      const ghostFilePath = `${this.photoStorageDir}${ghostFileName}`;
+      
+      const fileInfo = await FileSystem.getInfoAsync(ghostFilePath);
+      if (fileInfo.exists) {
+        return ghostFilePath;
+      }
+      
+      // If ghost image doesn't exist, try to store it
+      return await this.storeGhostImage();
+    } catch (error) {
+      console.error('❌ Error getting ghost image path:', error);
+      return null;
+    }
+  },
+
+  // Download and store a single photo locally
+  async downloadAndStorePhoto(playerId: number, photoCode?: string): Promise<string | null> {
+    try {
+      const fileName = `player_${playerId}.png`;
+      const filePath = `${this.photoStorageDir}${fileName}`;
+      
+      // Check if already downloaded
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (fileInfo.exists) {
+        console.log(`🖼️ Photo already exists for player ${playerId}`);
+        return filePath;
+      }
+      
+      // Use FPL photo code if available, otherwise fallback to player ID
+      const photoUrl = photoCode ? this.getPlayerPhotoUrl(photoCode) : this.getPlayerPhotoUrlById(playerId);
+      console.log(`📥 Downloading photo for player ${playerId}: ${photoUrl}`);
+      
+      const downloadResult = await FileSystem.downloadAsync(photoUrl, filePath);
+      
+      if (downloadResult.status === 200) {
+        console.log(`✅ Photo downloaded for player ${playerId}: ${filePath}`);
+        return filePath;
+      } else {
+        console.log(`❌ Failed to download photo for player ${playerId}: ${downloadResult.status}`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ Error downloading photo for player ${playerId}:`, error);
+      return null;
+    }
+  },
+
+  // Batch download and store photos
+  async batchDownloadPhotos(players: FPLPlayer[], batchSize: number = 50): Promise<Map<number, string>> {
+    const photoMap = new Map<number, string>();
+    
+    console.log(`🖼️ Starting batch photo download for ${players.length} players (batch size: ${batchSize})`);
+    
+    // Initialize storage directory
+    await this.initPhotoStorage();
+    
+    // Clear existing cache to ensure fresh downloads with correct extension
+    await this.clearPhotoCache();
+    await this.initPhotoStorage();
+    
+    // First, check which photos are already downloaded
+    const existingPhotos = new Map<number, string>();
+    for (const player of players) {
+      if (player.photo) {
+        const localPath = await this.getLocalPhotoPath(player.id);
+        if (localPath) {
+          existingPhotos.set(player.id, localPath);
+          photoMap.set(player.id, localPath);
+        }
+      }
+    }
+    
+    console.log(`🖼️ Found ${existingPhotos.size} existing photos, need to download ${players.length - existingPhotos.size}`);
+    
+    // Process in batches
+    for (let i = 0; i < players.length; i += batchSize) {
+      const batch = players.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(players.length / batchSize);
+      
+      console.log(`🖼️ Processing batch ${batchNum}/${totalBatches} (${batch.length} players)`);
+      
+      // Process batch concurrently with small delay
+      const batchPromises = batch.map(async (player) => {
+        if (!existingPhotos.has(player.id)) {
+          const localPath = await this.downloadAndStorePhoto(player.id, player.photo);
+          if (localPath) {
+            photoMap.set(player.id, localPath);
+          }
+        }
+        // Small delay to avoid overwhelming
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+      
+      await Promise.all(batchPromises);
+      
+      // Delay between batches
+      if (i + batchSize < players.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+    
+    console.log(`✅ Batch photo download completed. Stored ${photoMap.size} photos locally.`);
+    return photoMap;
+  },
+
+  // Get local photo path for a player
+  async getLocalPhotoPath(playerId: number): Promise<string | null> {
+    try {
+      const fileName = `player_${playerId}.png`;
+      const filePath = `${this.photoStorageDir}${fileName}`;
+      
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (fileInfo.exists) {
+        return filePath;
+      }
+      return null;
+    } catch (error) {
+      console.error(`❌ Error getting local photo path for player ${playerId}:`, error);
+      return null;
+    }
+  },
+
+  // Get count of downloaded photos
+  async getDownloadedPhotoCount(): Promise<number> {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(this.photoStorageDir);
+      if (!dirInfo.exists) {
+        return 0;
+      }
+      
+      const files = await FileSystem.readDirectoryAsync(this.photoStorageDir);
+      return files.filter(file => file.endsWith('.png')).length;
+    } catch (error) {
+      console.error('❌ Error getting downloaded photo count:', error);
+      return 0;
+    }
+  },
+
+  // Clear all downloaded photos
+  async clearPhotoCache(): Promise<void> {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(this.photoStorageDir);
+      if (dirInfo.exists) {
+        await FileSystem.deleteAsync(this.photoStorageDir, { idempotent: true });
+        console.log('🗑️ Cleared photo cache');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing photo cache:', error);
+    }
+  },
   
   // Fetch bootstrap data (teams, players, events, etc.)
   fetchBootstrapData: async (): Promise<FPLBootstrapData> => {
@@ -13,6 +219,25 @@ export const fplApiService = {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
+      
+      // Debug: log the structure of the response
+      console.log('🔍 FPL API Bootstrap response structure:');
+      console.log('  - Keys:', Object.keys(data));
+      console.log('  - Elements count:', data.elements?.length || 0);
+      console.log('  - Teams count:', data.teams?.length || 0);
+      
+      if (data.elements && data.elements.length > 0) {
+        const firstPlayer = data.elements[0];
+        console.log('  - First player keys:', Object.keys(firstPlayer));
+        console.log('  - First player photo:', firstPlayer.photo);
+        console.log('  - First player sample:', {
+          id: firstPlayer.id,
+          web_name: firstPlayer.web_name,
+          photo: firstPlayer.photo,
+          element_type: firstPlayer.element_type
+        });
+      }
+      
       return data;
     } catch (error) {
       console.error('Error fetching FPL bootstrap data:', error);
@@ -69,13 +294,53 @@ export const fplApiService = {
     return `https://resources.premierleague.com/premierleague/badges/t${teamCode}.png`;
   },
   
-  // Get player photo URL
+  // Get player photo URL from FPL 'photo' field
   getPlayerPhotoUrl: (photo: string): string => {
-    // The FPL API returns .jpg but some URLs work with .png
-    // Try .png first since that's what works for Ekitike
+    // FPL returns e.g. "154561.jpg" in bootstrap; correct URL is .../premierleague25/.../154561.png
     const baseUrl = `https://resources.premierleague.com/premierleague25/photos/players/110x140/`;
     const photoCode = photo.replace('.jpg', '').replace('.png', '');
     return `${baseUrl}${photoCode}.png`;
+  },
+
+  // Get player photo URL from player ID (fallback when photo code is missing)
+  getPlayerPhotoUrlById: (playerId: number): string => {
+    // This is a fallback - we should have photo codes from the API
+    return `https://resources.premierleague.com/premierleague/photos/players/110x140/p${playerId}.png`;
+  },
+
+  // Batch load player photos with validation
+  batchLoadPlayerPhotos: async (players: FPLPlayer[], batchSize: number = 100): Promise<Map<number, string>> => {
+    const photoMap = new Map<number, string>();
+    const validPhotoUrls: { playerId: number; url: string }[] = [];
+    
+    console.log(`🖼️ Starting batch photo loading for ${players.length} players (batch size: ${batchSize})`);
+    
+    // First, collect all photo URLs
+    for (const player of players) {
+      if (player.photo) {
+        const photoUrl = fplApiService.getPlayerPhotoUrl(player.photo);
+        validPhotoUrls.push({ playerId: player.id, url: photoUrl });
+      }
+    }
+    
+    console.log(`🖼️ Found ${validPhotoUrls.length} players with photo codes`);
+    
+    // Process in batches
+    for (let i = 0; i < validPhotoUrls.length; i += batchSize) {
+      const batch = validPhotoUrls.slice(i, i + batchSize);
+      console.log(`🖼️ Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(validPhotoUrls.length / batchSize)} (${batch.length} players)`);
+      
+      // Process batch with small delay to avoid overwhelming
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // For now, just store the URLs - we'll validate them when actually displayed
+      for (const { playerId, url } of batch) {
+        photoMap.set(playerId, url);
+      }
+    }
+    
+    console.log(`🖼️ Batch photo loading completed. Cached ${photoMap.size} photo URLs`);
+    return photoMap;
   },
   
   // Fetch fixtures (placeholder for now)

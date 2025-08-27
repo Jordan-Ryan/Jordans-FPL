@@ -21,7 +21,7 @@ interface PlayerStatsSectionProps {
 
 const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) => {
   const theme = useTheme();
-  const [activeTab, setActiveTab] = useState<'matches' | 'stats' | 'history'>('matches');
+  const [activeTab, setActiveTab] = useState<'matches' | 'stats' | 'history' | 'xp'>('matches');
   const [matchesSubTab, setMatchesSubTab] = useState<'results' | 'fixtures'>('results');
   const [teams, setTeams] = useState<FPLTeam[]>([]);
   const [playerHistory, setPlayerHistory] = useState<any[]>([]);
@@ -220,6 +220,274 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
       )}
     </View>
   );
+
+  const renderXpTab = () => {
+    const p: any = fplPlayer as any;
+    const gw1 = Number(p.gwp1_xp ?? 0);
+    const gw2 = Number(p.gwp2_xp ?? 0);
+    const gw3 = Number(p.gwp3_xp ?? 0);
+    const total3 = Number(p.total_3gw_xp ?? (gw1 + gw2 + gw3));
+    const total8 = typeof p.total_8gw_xp === 'number' ? Number(p.total_8gw_xp) : null;
+    const baselineGwCount = p.baselineHistoryLength ?? p.effectiveHistoryLength ?? 0;
+    const currentSeasonMinutes = Array.isArray(playerHistory)
+      ? playerHistory.reduce((sum, m) => sum + (Number(m.minutes) || 0), 0)
+      : 0;
+
+    // Prefer pre-rendered next3Fixtures, else fallback to predictor fixtures
+    const next3Fixtures = Array.isArray(p.next3Fixtures) && p.next3Fixtures.length > 0
+      ? p.next3Fixtures.slice(0, 3)
+      : Array.isArray(p.fixtures) && p.fixtures.length > 0
+        ? p.fixtures.slice(0, 3).map((fx: any) => ({
+            fixture: `${fx.opponent || 'TBD'} ${fx.home_away === 'H' ? '(H)' : '(A)'}\u00a0`,
+            difficulty: (() => {
+              const d = Number(fx.team_h_difficulty ?? fx.team_a_difficulty ?? fx.difficulty ?? 3);
+              if (d <= 2) return 'Easy';
+              if (d >= 4) return 'Hard';
+              return 'Medium';
+            })()
+          }))
+        : [];
+
+    const getFdrColor = (difficulty: 'Easy' | 'Medium' | 'Hard') => {
+      switch (difficulty) {
+        case 'Easy': return '#10B981';
+        case 'Hard': return '#EF4444';
+        default: return '#F59E0B';
+      }
+    };
+
+    // Helpers
+    const diffToMultiplier = (d: number) => {
+      if (d <= 1) return 1.25;
+      if (d === 2) return 1.15;
+      if (d === 3) return 1.0;
+      if (d === 4) return 0.85;
+      return 0.70; // 5
+    };
+
+    const posMultiplier = (() => {
+      const mult = { 1: 1.08, 2: 1.23, 3: 1.20, 4: 1.23 } as any;
+      return mult[fplPlayer.element_type] || 1.0;
+    })();
+
+    const computeRolling = () => {
+      const hist = Array.isArray(playerHistory) ? [...playerHistory] : [];
+      hist.sort((a, b) => (a.round || 0) - (b.round || 0));
+      const lastNAvg = (n: number, key: string) => {
+        if (hist.length === 0) return 0;
+        const slice = hist.slice(-n);
+        const vals = slice.map((g: any) => Number(g[key]) || 0);
+        return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+      };
+      return {
+        roll3_points: lastNAvg(3, 'total_points'),
+        roll5_points: lastNAvg(5, 'total_points'),
+        roll8_points: lastNAvg(8, 'total_points'),
+        roll15_points: lastNAvg(15, 'total_points'),
+        roll5_minutes: lastNAvg(5, 'minutes'),
+      };
+    };
+
+    const rolling = computeRolling();
+
+    // Build tiles data for the next 3 GWs
+    const tiles = [gw1, gw2, gw3].map((xp, idx) => {
+      // Determine opponent and difficulty if available
+      let opponent = 'TBD';
+      let homeAwayLabel = '';
+      let difficultyLevel: 'Easy' | 'Medium' | 'Hard' = 'Medium';
+      let difficultyNumeric = 3;
+      if (Array.isArray(p.fixtures) && p.fixtures[idx]) {
+        const fx = p.fixtures[idx];
+        opponent = `${fx.opponent || 'TBD'} ${fx.home_away === 'H' ? '(H)' : '(A)'}\u00a0`;
+        homeAwayLabel = fx.home_away === 'H' ? 'Home' : 'Away';
+        const d = Number(fx.team_h_difficulty ?? fx.team_a_difficulty ?? fx.difficulty ?? 3);
+        difficultyNumeric = isNaN(d) ? 3 : d;
+        if (difficultyNumeric <= 2) difficultyLevel = 'Easy';
+        else if (difficultyNumeric >= 4) difficultyLevel = 'Hard';
+        else difficultyLevel = 'Medium';
+      } else if (Array.isArray(p.next3Fixtures) && p.next3Fixtures[idx]) {
+        const fx = p.next3Fixtures[idx];
+        opponent = fx.fixture || 'TBD';
+        difficultyLevel = (fx.difficulty as any) || 'Medium';
+        difficultyNumeric = difficultyLevel === 'Easy' ? 2 : difficultyLevel === 'Hard' ? 4 : 3;
+      }
+
+      const homeAwayMultiplier = homeAwayLabel === 'Home' ? 1.12 : homeAwayLabel === 'Away' ? 0.93 : 1.0;
+      const fdrMultiplier = diffToMultiplier(difficultyNumeric);
+
+      return {
+        label: `GW+${idx + 1}`,
+        xp,
+        opponent,
+        difficultyLevel,
+        homeAwayLabel,
+        fdrMultiplier,
+        posMultiplier,
+        penaltyMultiplier: typeof p.penaltyMultiplier === 'number' ? p.penaltyMultiplier : 1.0,
+        rolling,
+      };
+    });
+
+    return (
+      <View style={styles.tabContent}>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Expected Points (XP)</Text>
+
+        {/* Next 3 GW tiles */}
+        <View style={styles.xpTilesContainer}>
+          {tiles.map((t, idx) => (
+            <View key={idx} style={styles.xpTile}>
+              <Text style={[styles.xpTileHeader, { color: theme.colors.text }]}>{t.label}: {t.xp.toFixed(1)} pts</Text>
+              <Text style={[styles.xpTileSub, { color: theme.colors.textSecondary }]}>{t.opponent}</Text>
+              <View style={styles.xpTileDivider} />
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Difficulty: {t.difficultyLevel} (×{t.fdrMultiplier.toFixed(2)})</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Venue: {t.homeAwayLabel || 'N/A'} {t.homeAwayLabel ? `(×${(t.homeAwayLabel === 'Home' ? 1.12 : 0.93).toFixed(2)})` : ''}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Position Multiplier: ×{t.posMultiplier.toFixed(2)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Penalty Multiplier: ×{t.penaltyMultiplier.toFixed(2)}</Text>
+              <View style={styles.xpTileDivider} />
+              <Text style={[styles.xpTileSection, { color: theme.colors.text }]}>Rolling Inputs</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• 3-GW Avg Pts: {rolling.roll3_points.toFixed(2)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• 5-GW Avg Pts: {rolling.roll5_points.toFixed(2)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• 8-GW Avg Pts: {rolling.roll8_points.toFixed(2)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• 15-GW Avg Pts: {rolling.roll15_points.toFixed(2)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• 5-GW Avg Minutes: {rolling.roll5_minutes.toFixed(0)} mins</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Totals */}
+        <View style={styles.rankingsGrid}>
+          <View style={styles.rankingItem}>
+            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{total3.toFixed(1)}</Text>
+            <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>Total 3GW XP</Text>
+          </View>
+          {total8 !== null && (
+            <View style={styles.rankingItem}>
+              <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{total8.toFixed(1)}</Text>
+              <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>Total 8GW XP</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Per-GW Fixtures and XP breakdown */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>Fixtures & XP Breakdown</Text>
+        <View style={styles.matchHeader}>
+          <Text style={[styles.matchHeaderTextExtraSmall, { color: theme.colors.textSecondary }]}>GW</Text>
+          <Text style={[styles.matchHeaderTextLarge, { color: theme.colors.textSecondary }]}>Opponent</Text>
+          <Text style={[styles.matchHeaderTextMedium, { color: theme.colors.textSecondary }]}>FDR</Text>
+          <Text style={[styles.matchHeaderTextMedium, { color: theme.colors.textSecondary }]}>XP</Text>
+        </View>
+        {next3Fixtures.length > 0 ? (
+          next3Fixtures.map((fx: any, idx: number) => (
+            <View key={idx} style={styles.matchRow}>
+              <View style={styles.matchCellExtraSmall}>
+                <Text style={[styles.matchCellText, { color: theme.colors.text }]}>{idx + 1}</Text>
+              </View>
+              <View style={styles.matchCellLarge}>
+                <Text style={[styles.matchCellText, { color: theme.colors.text }]}>{fx.fixture || 'TBD'}</Text>
+              </View>
+              <View style={styles.matchCellMedium}>
+                <View style={{
+                  backgroundColor: getFdrColor((fx.difficulty as 'Easy' | 'Medium' | 'Hard') || 'Medium'),
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12
+                }}>
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 12 }}>
+                    {fx.difficulty || 'Medium'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.matchCellMedium}>
+                <Text style={[styles.matchCellText, { color: theme.colors.text }]}>{[gw1, gw2, gw3][idx]?.toFixed(1) ?? '-'}</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>No upcoming fixtures available.</Text>
+        )}
+
+        {/* Detailed cards for Next+1 and Next+2 GW with key drivers */}
+        <View style={{ marginTop: 24 }}>
+          {[{ label: 'Next+1 GW', value: gw1 }, { label: 'Next+2 GW', value: gw2 }, { label: 'Next+3 GW', value: gw3 }].map((row, idx) => (
+            <View key={idx} style={styles.xpCard}>
+              <Text style={[styles.xpCardTitle, { color: theme.colors.primary }]}>
+                {row.label}: {row.value.toFixed(1)} points
+              </Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Baseline History: {baselineGwCount} gameweeks</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Current Form: {Number(fplPlayer.form).toFixed(1)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• ICT Index: {Number(fplPlayer.ict_index).toFixed(1)}</Text>
+              <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Minutes: {currentSeasonMinutes} mins</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* XP Calculation Details */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>XP Calculation Details</Text>
+        <View style={styles.detailsGrid}>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Baseline History:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{baselineGwCount} gameweeks</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Current Form:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{Number(fplPlayer.form).toFixed(1)}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>ICT Index:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{Number(fplPlayer.ict_index).toFixed(1)}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Minutes Played (Current Season):</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{currentSeasonMinutes} mins</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Total 8-GW XP:</Text><Text style={[styles.detailsValueAccent, { color: theme.colors.primary }]}>{total8 !== null ? `${total8.toFixed(1)} points` : '—'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>3-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>8-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>15-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Rolling Minutes:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 mins</Text></View>
+        </View>
+
+        {/* XP Calculation Factors */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>XP Calculation Factors</Text>
+        <View style={styles.detailsGrid}>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty Multiplier:</Text><Text style={[styles.detailsValueAccent, { color: theme.colors.primary }]}>{typeof p.penaltyMultiplier === 'number' ? `${p.penaltyMultiplier.toFixed(2)}x` : '1.00x'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Fixture Difficulty (FDR):</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>N/A</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>FDR Multiplier:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>N/A</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty System:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{(p.isNewToPL || p.isFromPromotedClub || p.isYoungPlayer) ? 'Penalties applied' : 'No penalties - No caps'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Position Multiplier:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>
+            {(() => {
+              const mult = { 1: 1.08, 2: 1.23, 3: 1.20, 4: 1.23 } as any;
+              const m = mult[fplPlayer.element_type] || 1.0;
+              return `${m.toFixed(2)}x`;
+            })()}
+          </Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Availability:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{
+            (fplPlayer.chance_of_playing_next_round ?? 100) + '%'
+          }</Text></View>
+        </View>
+
+        {/* Rules & multipliers summary */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>Rules & Multipliers (2025/26)</Text>
+        <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>Applied in this order:</Text>
+        <View style={{ marginTop: 8 }}>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• Position multipliers: GK 1.08, DEF 1.23, MID 1.20, FWD 1.23</Text>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• 2025/26 adjustments: Liberal assists (+5%), Defensive contributions (+0/20/15/8%)</Text>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• BPS changes: GK +8%, DEF +3%, high scorers −5%</Text>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• Home/Away: Home ×1.12, Away ×0.93</Text>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• FDR multipliers: 1→1.25, 2→1.15, 3→1.00, 4→0.85, 5→0.70</Text>
+          <Text style={[styles.matchCellText, { color: theme.colors.textSecondary }]}>• Availability scaling: 100% 1.0, 75% 0.9, 50% 0.7, 25% 0.5</Text>
+        </View>
+
+        {/* Data quality and penalties */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>Data Quality & Penalties</Text>
+        <View style={styles.rankingsGrid}>
+          <View style={styles.rankingItem}>
+            <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>Quality</Text>
+            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{p.dataQuality || 'good'}</Text>
+          </View>
+          <View style={styles.rankingItem}>
+            <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>Penalty</Text>
+            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{typeof p.penaltyMultiplier === 'number' ? `${(p.penaltyMultiplier * 100).toFixed(0)}%` : '—'}</Text>
+          </View>
+          <View style={styles.rankingItem}>
+            <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>History (24/25 + current)</Text>
+            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{(p.effectiveHistoryLength ?? p.baselineHistoryLength ?? 0)}</Text>
+          </View>
+        </View>
+        <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>Flags: {p.isNewToPL ? 'New to PL, ' : ''}{p.isFromPromotedClub ? 'Promoted club, ' : ''}{p.isYoungPlayer ? 'Young player' : ''}</Text>
+      </View>
+    );
+  };
 
   const renderHistoryTab = () => {
     return (
@@ -466,10 +734,25 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
             History
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === 'xp' && { borderBottomColor: theme.colors.primary }
+          ]}
+          onPress={() => setActiveTab('xp')}
+        >
+          <Text style={[
+            styles.tabText,
+            { color: activeTab === 'xp' ? theme.colors.primary : theme.colors.textSecondary }
+          ]}>
+            XP
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {activeTab === 'matches' && renderMatchesTab()}
       {activeTab === 'stats' && renderStatsTab()}
+      {activeTab === 'xp' && renderXpTab()}
       {activeTab === 'history' && renderHistoryTab()}
 
       <Modal
@@ -1343,6 +1626,78 @@ const styles = StyleSheet.create({
   debugText: {
     fontSize: 12,
     textAlign: 'center',
+  },
+  xpCard: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  xpCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  xpBullet: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  detailsGrid: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  detailsLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  detailsValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailsValueAccent: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  xpTilesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  xpTile: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  xpTileHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  xpTileSub: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  xpTileDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 8,
+  },
+  xpTileSection: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
   },
 } as const);
 

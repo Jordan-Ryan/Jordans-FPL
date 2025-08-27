@@ -174,12 +174,12 @@ export const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   playerInfoCell: {
-    width: 150,
+    width: 160, // Increased from 150 to accommodate larger image
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start', // Changed from 'center' to 'flex-start' to align content to the top
   },
   playerCell: {
-    width: 150,
+    width: 160, // Increased from 150 to match playerInfoCell
     flexDirection: 'row',
     alignItems: 'center',
   },

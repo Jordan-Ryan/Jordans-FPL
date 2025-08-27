@@ -20,10 +20,10 @@ import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
 
-interface SortConfig {
-  key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gw2_xp' | 'gw3_xp' | 'gw4_xp' | 'total_3gw_xp';
-  direction: 'asc' | 'desc';
-}
+  interface SortConfig {
+    key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gwp1_xp' | 'gwp2_xp' | 'gwp3_xp' | 'total_3gw_xp';
+    direction: 'asc' | 'desc';
+  }
 
 interface FilterConfig {
   position: string;
@@ -33,7 +33,7 @@ interface FilterConfig {
 
 const PlayersScreen: React.FC = () => {
   const theme = useTheme();
-  const { cachedData, isDataLoaded } = useData();
+  const { cachedData, isDataLoaded, clearCache } = useData();
   const { width } = Dimensions.get('window');
   
   const [players, setPlayers] = useState<FPLPlayer[]>([]);
@@ -54,35 +54,76 @@ const PlayersScreen: React.FC = () => {
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<FPLPlayer | null>(null);
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
-  const [displayedPlayersCount, setDisplayedPlayersCount] = useState(50);
+  // Remove displayedPlayersCount - show all players
 
   // Use cached data when available
   useEffect(() => {
+    const startTime = Date.now();
+    console.log('🚀 PlayersScreen: Starting to load...');
+    console.log('🔍 Debug info:');
+    console.log('  - cachedData exists:', !!cachedData);
+    console.log('  - isDataLoaded:', isDataLoaded);
+    
     if (cachedData && isDataLoaded) {
-      console.log('📦 Using cached data for Players screen');
+      console.log('📦 PlayersScreen: Using cached data');
       console.log('📊 Cached data summary:');
       console.log(`  - PlayersModel: ${cachedData.playersModel?.length || 0}`);
       console.log(`  - Player Predictions: ${cachedData.playerPredictions?.length || 0}`);
+      console.log(`  - Pre-rendered Players Table: ${cachedData.preRenderedPlayersTable?.length || 0}`);
+      console.log(`  - Pre-rendered data keys:`, Object.keys(cachedData).filter(key => key.startsWith('preRendered')));
       
-      // Use premerged model directly - populate players state for filtering
-      if (cachedData.playersModel && cachedData.playersModel.length > 0) {
-        console.log('✅ Using pre-merged playersModel with XP data');
+      // PRIORITY 1: Use pre-rendered data for INSTANT display
+      if (cachedData.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0) {
+        console.log('🚀 INSTANT DISPLAY: Using pre-rendered players table data!');
+        console.log('📊 Pre-rendered data sample:', cachedData.preRenderedPlayersTable[0]);
         
-        // Populate players state for filtering operations
-        console.log('✅ Populating players state with cached data for filtering');
-        setPlayers(cachedData.playersModel);
-        
+        // Set all data immediately for instant display
+        setPlayers(cachedData.preRenderedPlayersTable);
         setTeams(cachedData.teams);
         setFixtures(cachedData.fixtures);
         setCurrentGameweek(cachedData.currentGameweek.id);
         setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
-        
-        // Set loading to false immediately since we have pre-filtered data
         setLoading(false);
-      } else {
-        console.log('⚠️ playersModel is empty, waiting for data to load...');
-        setLoading(true);
+        
+        // Debug: Check XP data for first few players
+        console.log('🔍 XP Data Check:');
+        for (let i = 0; i < Math.min(3, cachedData.preRenderedPlayersTable.length); i++) {
+          const player = cachedData.preRenderedPlayersTable[i];
+          console.log(`  ${player.web_name}: gwp1_xp=${player.gwp1_xp}, gwp2_xp=${player.gwp2_xp}, gwp3_xp=${player.gwp3_xp}, total_3gw_xp=${player.total_3gw_xp}`);
+          console.log(`  ${player.web_name}: has gwp1_xp: ${'gwp1_xp' in player}, has gwp2_xp: ${'gwp2_xp' in player}, has gwp3_xp: ${'gwp3_xp' in player}, has total_3gw_xp: ${'total_3gw_xp' in player}`);
+        }
+        
+        const loadTime = Date.now() - startTime;
+        console.log(`✅ PlayersScreen: Loaded in ${loadTime}ms - should be instant now!`);
+        return; // Exit early - we have everything we need
       }
+      
+      // PRIORITY 2: Fallback to processed data
+      if (cachedData.processedPlayerData?.allPlayers && cachedData.processedPlayerData.allPlayers.length > 0) {
+        console.log('✅ Fallback: Using processed player data');
+        setPlayers(cachedData.processedPlayerData.allPlayers);
+        setTeams(cachedData.teams);
+        setFixtures(cachedData.fixtures);
+        setCurrentGameweek(cachedData.currentGameweek.id);
+        setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
+        setLoading(false);
+        return;
+      }
+      
+      // PRIORITY 3: Last resort - playersModel
+      if (cachedData.playersModel && cachedData.playersModel.length > 0) {
+        console.log('⚠️ Last resort: Using playersModel');
+        setPlayers(cachedData.playersModel);
+        setTeams(cachedData.teams);
+        setFixtures(cachedData.fixtures);
+        setCurrentGameweek(cachedData.currentGameweek.id);
+        setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
+        setLoading(false);
+        return;
+      }
+      
+      console.log('❌ No usable data found');
+      setLoading(true);
     } else if (!isDataLoaded) {
       console.log('⏳ Data still loading...');
       setLoading(true);
@@ -134,7 +175,153 @@ const PlayersScreen: React.FC = () => {
   const filteredAndSortedPlayers = useMemo(() => {
     const startTime = performance.now();
     
-    // Always try to use pre-filtered data first for maximum performance
+    // PRIORITY 1: Use pre-rendered data for INSTANT display
+    if (cachedData?.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0) {
+      console.log('🚀 INSTANT: Using pre-rendered players table for filtering');
+      
+      // Apply filters to pre-rendered data
+      let filtered = cachedData.preRenderedPlayersTable.filter(player => {
+        // Search filter
+        if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
+          return false;
+        }
+        
+        // Position filter
+        if (filterConfig.position !== 'All') {
+          const playerPosition = getPositionName(player.element_type);
+          if (playerPosition !== filterConfig.position) {
+            return false;
+          }
+        }
+        
+        // Price filter (null means Unlimited)
+        if (filterConfig.maxPrice !== null) {
+          if (player.now_cost / 10 > filterConfig.maxPrice) {
+            return false;
+          }
+        }
+        
+        // Club filter
+        if (filterConfig.club !== 'All clubs') {
+          const playerClub = getClubName(player.team);
+          if (playerClub !== filterConfig.club) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
+      
+      // Sort players
+      filtered.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'web_name':
+            aValue = a.web_name.toLowerCase();
+            bValue = b.web_name.toLowerCase();
+            break;
+          case 'form':
+            aValue = parseFloat(a.form) || 0;
+            bValue = parseFloat(b.form) || 0;
+            break;
+          case 'now_cost':
+            aValue = a.now_cost;
+            bValue = b.now_cost;
+            break;
+          case 'selected_by_percent':
+            aValue = parseFloat(a.selected_by_percent) || 0;
+            bValue = parseFloat(b.selected_by_percent) || 0;
+            break;
+          case 'total_points':
+            aValue = a.total_points;
+            bValue = b.total_points;
+            break;
+          case 'ict_index':
+            aValue = parseFloat(a.ict_index) || 0;
+            bValue = parseFloat(b.ict_index) || 0;
+            break;
+          case 'transfers_in':
+            aValue = a.transfers_in;
+            bValue = b.transfers_in;
+            break;
+          case 'transfers_out':
+            aValue = a.transfers_out;
+            bValue = b.transfers_out;
+            break;
+          case 'event_points':
+            aValue = a.event_points;
+            bValue = b.event_points;
+            break;
+          case 'dreamteam_count':
+            aValue = a.dreamteam_count;
+            bValue = b.dreamteam_count;
+            break;
+          case 'gwp1_xp':
+            aValue = a.gwp1_xp || 0;
+            bValue = b.gwp1_xp || 0;
+            break;
+          case 'gwp2_xp':
+            aValue = a.gwp2_xp || 0;
+            bValue = b.gwp2_xp || 0;
+            break;
+          case 'gwp3_xp':
+            aValue = a.gwp3_xp || 0;
+            bValue = b.gwp3_xp || 0;
+            break;
+          case 'total_3gw_xp':
+            aValue = a.total_3gw_xp || 0;
+            bValue = b.total_3gw_xp || 0;
+            break;
+          case 'next_gw1':
+          case 'next_gw2':
+          case 'next_gw3':
+            // Use pre-calculated fixtures for instant sorting
+            const gameweekIndex = parseInt(sortConfig.key.slice(-1)) - 1;
+            const aFixtures = a.next3Fixtures || [];
+            const bFixtures = b.next3Fixtures || [];
+            const aFixture = aFixtures[gameweekIndex];
+            const bFixture = bFixtures[gameweekIndex];
+            
+            if (!aFixture || !bFixture) {
+              aValue = 0;
+              bValue = 0;
+            } else {
+              // Sort by difficulty: Easy (1) < Medium (2) < Hard (3)
+              const difficultyMap = { 'Easy': 1, 'Medium': 2, 'Hard': 3 } as const;
+              const aDifficulty = aFixture.difficulty as keyof typeof difficultyMap;
+              const bDifficulty = bFixture.difficulty as keyof typeof difficultyMap;
+              aValue = difficultyMap[aDifficulty] || 2;
+              bValue = difficultyMap[bDifficulty] || 2;
+            }
+            break;
+          default:
+            aValue = 0;
+            bValue = 0;
+        }
+
+        if (sortConfig.key === 'web_name') {
+          if (sortConfig.direction === 'asc') {
+            return (aValue as string).localeCompare(bValue as string);
+          } else {
+            return (bValue as string).localeCompare(aValue as string);
+          }
+        } else {
+          if (sortConfig.direction === 'asc') {
+            return (aValue as number) - (bValue as number);
+          } else {
+            return (bValue as number) - (aValue as number);
+          }
+        }
+      });
+      
+      const endTime = performance.now();
+      console.log(`✅ Pre-rendered filtering completed in ${(endTime - startTime).toFixed(2)}ms`);
+      return filtered;
+    }
+    
+    // PRIORITY 2: Fallback to pre-filtered data
     if (cachedData?.processedPlayerData?.preFiltered?.default) {
       // If no filters are active and we're sorting by total_3gw_xp (default), use pre-filtered data
       if (!searchQuery && 
@@ -175,15 +362,15 @@ const PlayersScreen: React.FC = () => {
       }
     }
 
-    // If no pre-filtered data available or complex filters, use cached playersModel
+    // PRIORITY: Use cached playersModel immediately for instant display
     const sourceData = cachedData?.playersModel || players;
     if (sourceData.length === 0) {
       console.log('⚠️ No players data available, returning empty array');
       return [];
     }
 
-    // Fallback to dynamic filtering for complex combinations
-    console.log('🔄 Using dynamic filtering for complex filter combination');
+    // Use basic data immediately, then optimize with pre-filtered data when available
+    console.log('🔄 Using immediate data display with dynamic filtering');
     let filtered = sourceData.filter(player => {
       // Search filter
       if (searchQuery && !player.web_name.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -262,13 +449,29 @@ const PlayersScreen: React.FC = () => {
           aValue = a.dreamteam_count;
           bValue = b.dreamteam_count;
           break;
+        case 'gwp1_xp':
+          aValue = a.gwp1_xp || 0;
+          bValue = b.gwp1_xp || 0;
+          break;
+        case 'gwp2_xp':
+          aValue = a.gwp2_xp || 0;
+          bValue = b.gwp2_xp || 0;
+          break;
+        case 'gwp3_xp':
+          aValue = a.gwp3_xp || 0;
+          bValue = b.gwp3_xp || 0;
+          break;
+        case 'total_3gw_xp':
+          aValue = a.total_3gw_xp || 0;
+          bValue = b.total_3gw_xp || 0;
+          break;
         case 'next_gw1':
         case 'next_gw2':
         case 'next_gw3':
-          // For sorting by fixture difficulty, we'll use a simple approach
+          // Use pre-calculated fixtures for instant sorting
           const gameweekIndex = parseInt(sortConfig.key.slice(-1)) - 1;
-          const aFixtures = getNext3Fixtures(a.team);
-          const bFixtures = getNext3Fixtures(b.team);
+          const aFixtures = a.next3Fixtures || [];
+          const bFixtures = b.next3Fixtures || [];
           const aFixture = aFixtures[gameweekIndex];
           const bFixture = bFixtures[gameweekIndex];
           
@@ -278,8 +481,10 @@ const PlayersScreen: React.FC = () => {
           } else {
             // Sort by difficulty: Easy (1) < Medium (2) < Hard (3)
             const difficultyMap = { 'Easy': 1, 'Medium': 2, 'Hard': 3 } as const;
-            aValue = difficultyMap[aFixture.difficulty] || 2;
-            bValue = difficultyMap[bFixture.difficulty] || 2;
+            const aDifficulty = aFixture.difficulty as keyof typeof difficultyMap;
+            const bDifficulty = bFixture.difficulty as keyof typeof difficultyMap;
+            aValue = difficultyMap[aDifficulty] || 2;
+            bValue = difficultyMap[bDifficulty] || 2;
           }
           break;
         default:
@@ -502,6 +707,33 @@ const PlayersScreen: React.FC = () => {
           <Text style={styles.chevronIcon}>▼</Text>
         </TouchableOpacity>
 
+        {/* Refresh Button */}
+        <TouchableOpacity
+          style={[styles.filterButton, { borderColor: theme.colors.textSecondary, backgroundColor: theme.colors.primary }]}
+          onPress={() => {
+            Alert.alert(
+              'Refresh Data',
+              'This will clear the cache and reload all data. This may take a few minutes.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Refresh', 
+                  style: 'destructive',
+                  onPress: () => {
+                    clearCache();
+                    // Force a reload by setting loading to true
+                    setLoading(true);
+                    // The app will automatically reload when cache is cleared
+                  }
+                }
+              ]
+            );
+          }}
+        >
+          <Text style={[styles.filterButtonText, { color: '#FFFFFF' }]}>
+            🔄 Refresh
+          </Text>
+        </TouchableOpacity>
         
       </View>
 
@@ -591,6 +823,8 @@ const PlayersScreen: React.FC = () => {
         <Text style={[styles.playerCountText, { color: theme.colors.text }]}>
           Showing {filteredAndSortedPlayers.length} players
         </Text>
+        
+
       </View>
 
 
@@ -643,7 +877,7 @@ const PlayersScreen: React.FC = () => {
               onPress={() => handleSort('event_points')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{lastGameweek} {getSortIndicator('event_points')}
+                GW{currentGameweek} {getSortIndicator('event_points')}
               </Text>
             </TouchableOpacity>
             
@@ -694,55 +928,55 @@ const PlayersScreen: React.FC = () => {
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw2_xp')}
+              onPress={() => handleSort('gwp1_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 1} Fixture {getSortIndicator('gw2_xp')}
+                GW{currentGameweek + 1} Fixture {getSortIndicator('gwp1_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw3_xp')}
+              onPress={() => handleSort('gwp2_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 2} Fixture {getSortIndicator('gw3_xp')}
+                GW{currentGameweek + 2} Fixture {getSortIndicator('gwp2_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw4_xp')}
+              onPress={() => handleSort('gwp3_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 3} Fixture {getSortIndicator('gw4_xp')}
+                GW{currentGameweek + 3} Fixture {getSortIndicator('gwp3_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw2_xp')}
+              onPress={() => handleSort('gwp1_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 1} XP {getSortIndicator('gw2_xp')}
+                GW{currentGameweek + 1} XP {getSortIndicator('gwp1_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw3_xp')}
+              onPress={() => handleSort('gwp2_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 2} XP {getSortIndicator('gw3_xp')}
+                GW{currentGameweek + 2} XP {getSortIndicator('gwp2_xp')}
               </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.headerCell}
-              onPress={() => handleSort('gw4_xp')}
+              onPress={() => handleSort('gwp3_xp')}
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
-                GW{currentGameweek + 3} XP {getSortIndicator('gw4_xp')}
+                GW{currentGameweek + 3} XP {getSortIndicator('gwp3_xp')}
               </Text>
             </TouchableOpacity>
             
@@ -764,22 +998,54 @@ const PlayersScreen: React.FC = () => {
             style={styles.playersList} 
             showsVerticalScrollIndicator={false}
           >
-            {filteredAndSortedPlayers.slice(0, displayedPlayersCount).map((player: any, index: number) => (
-              <TouchableOpacity 
-                key={player.id} 
-                style={[
-                  styles.playerRow,
-                  index === filteredAndSortedPlayers.length - 1 && { marginBottom: 0 }
-                ]}
-                onPress={() => handlePlayerPress(player)}
-                activeOpacity={0.7}
-              >
+            {filteredAndSortedPlayers.map((player: any, index: number) => {
+              // Check if player has 24/25 baseline history
+              // A player has baseline data if they have baselineHistoryLength > 0
+              // This indicates they played in the 2024-25 season and have historical data
+              const hasBaselineHistory = (player.baselineHistoryLength || 0) > 0;
+              
+              // Highlight ALL players who have NO baseline history (regardless of XP)
+              // This shows which players are new to the Premier League
+              const shouldHighlightOrange = !hasBaselineHistory;
+              
+              // Debug logging for specific players
+              if (player.web_name === 'Salah' || player.web_name === 'Elkitike') {
+                console.log(`${player.web_name} debug:`, {
+                  gwp1_xp: player.gwp1_xp,
+                  gwp2_xp: player.gwp2_xp,
+                  gwp3_xp: player.gwp3_xp,
+                  total_3gw_xp: player.total_3gw_xp,
+                  baselineHistoryLength: player.baselineHistoryLength || 0,
+                  season_history_length: player.season_history?.length,
+                  hasBaselineHistory: hasBaselineHistory,
+                  // Check if this is a new player (no baseline history)
+                  isNewPlayer: !hasBaselineHistory
+                });
+              }
+              
+              return (
+                <TouchableOpacity 
+                  key={player.id} 
+                  style={[
+                    styles.playerRow,
+                    index === filteredAndSortedPlayers.length - 1 && { marginBottom: 0 },
+                    // Highlight players without 24/25 history (new to Premier League)
+                    shouldHighlightOrange && { 
+                      backgroundColor: 'rgba(255, 165, 0, 0.2)' // Light orange with opacity
+                    }
+                  ]}
+                  onPress={() => handlePlayerPress(player)}
+                  activeOpacity={0.7}
+                >
                 {/* Player Info */}
                 <View style={[styles.playerInfoCell, styles.playerHeaderCell]}>
                   <PlayerPhoto 
                     playerId={player.id}
-                    width={32}
-                    height={40}
+                    photoCode={player.photo}
+                    photoUrl={player.photoUrl}
+                    width={45}
+                    height={56}
+                    resizeMode="cover"
                     style={{ marginRight: 8 }}
                   />
                   <View style={styles.playerDetails}>
@@ -863,10 +1129,10 @@ const PlayersScreen: React.FC = () => {
                   </Text>
                 </View>
                 
-                {/* GW3 Fixture (corresponds to gw2_xp) */}
+                {/* GW3 Fixture (corresponds to gwp1_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
-                    const fixtures = getNext3Fixtures(player.team);
+                    const fixtures = player.next3Fixtures || [];
                     const fixture = fixtures[0]; // GW3
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
@@ -883,10 +1149,10 @@ const PlayersScreen: React.FC = () => {
                   })()}
                 </View>
                 
-                {/* GW4 Fixture (corresponds to gw3_xp) */}
+                {/* GW4 Fixture (corresponds to gwp2_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
-                    const fixtures = getNext3Fixtures(player.team);
+                    const fixtures = player.next3Fixtures || [];
                     const fixture = fixtures[1]; // GW4
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
@@ -903,10 +1169,10 @@ const PlayersScreen: React.FC = () => {
                   })()}
                 </View>
                 
-                {/* GW5 Fixture (corresponds to gw4_xp) */}
+                {/* GW5 Fixture (corresponds to gwp3_xp) */}
                 <View style={styles.statCell}>
                   {(() => {
-                    const fixtures = getNext3Fixtures(player.team);
+                    const fixtures = player.next3Fixtures || [];
                     const fixture = fixtures[2]; // GW5
                     if (!fixture) return <Text style={[styles.statText, { color: theme.colors.textSecondary }]}>-</Text>;
                     
@@ -926,21 +1192,21 @@ const PlayersScreen: React.FC = () => {
                 {/* GW+2 XP */}
                 <View style={styles.statCell}>
                   <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw2_xp || 0}
+                    {player.gwp1_xp || 0}
                   </Text>
                 </View>
                 
                 {/* GW+3 XP */}
                 <View style={styles.statCell}>
                   <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw3_xp || 0}
+                    {player.gwp2_xp || 0}
                   </Text>
                 </View>
                 
                 {/* GW+4 XP */}
                 <View style={styles.statCell}>
                   <Text style={[styles.statText, { color: theme.colors.text }]}> 
-                    {player.gw4_xp || 0}
+                    {player.gwp3_xp || 0}
                   </Text>
                 </View>
                 
@@ -950,22 +1216,11 @@ const PlayersScreen: React.FC = () => {
                     {player.total_3gw_xp || 0}
                   </Text>
                 </View>
-                
-
               </TouchableOpacity>
-            ))}
+            );
+          })}
             
-            {/* Load More Button */}
-            {displayedPlayersCount < filteredAndSortedPlayers.length && (
-              <TouchableOpacity
-                style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => setDisplayedPlayersCount(prev => Math.min(prev + 50, filteredAndSortedPlayers.length))}
-              >
-                <Text style={[styles.loadMoreText, { color: 'white' }]}>
-                  Load More ({filteredAndSortedPlayers.length - displayedPlayersCount} remaining)
-                </Text>
-              </TouchableOpacity>
-            )}
+                    {/* All players are now displayed */}
 
           </ScrollView>
         </View>
@@ -976,8 +1231,14 @@ const PlayersScreen: React.FC = () => {
         <PlayerDetailsModal
           visible={showPlayerDetails}
           onClose={() => {
+            const startTime = Date.now();
+            console.log('🚀 PlayersScreen: Starting to close player details modal...');
+            
             setShowPlayerDetails(false);
             setSelectedPlayer(null);
+            
+            const closeTime = Date.now() - startTime;
+            console.log(`✅ PlayersScreen: Player details modal closed in ${closeTime}ms`);
           }}
           fplPlayer={selectedPlayer}
           team={getTeamById(selectedPlayer.team) || null}

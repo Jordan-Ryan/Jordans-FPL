@@ -1,21 +1,47 @@
-import baselineData2024_25 from '../data/2024-25-baseline-processed.json';
+const baselineData2024_25 = require('../data/2024-25-baseline-processed.json');
 
 
 
 interface PlayerSeasonData {
   name: string;
-  element_type: number;
-  team: string;
+  name_key: string;
+  fpl_id: number;
   season_history: Array<{
     round: number;
     total_points: number;
     minutes: number;
     was_home: boolean;
-    opponent_team: string;
-    ict_index: number;
+    opponent_team: number;
+    goals_scored: number;
+    assists: number;
+    clean_sheets: number;
+    goals_conceded: number;
+    bonus: number;
     bps: number;
+    influence: number;
+    creativity: number;
+    threat: number;
+    ict_index: number;
+    expected_goals: number;
+    expected_assists: number;
     expected_goal_involvements: number;
+    expected_goals_conceded: number;
+    fixture: number;
+    kickoff_time: string;
+    team_a_score: number;
+    team_h_score: number;
+    value: number;
   }>;
+  stats: {
+    total_games: number;
+    total_points: number;
+    total_minutes: number;
+    average_points: number;
+    goals_scored: number;
+    assists: number;
+    clean_sheets: number;
+    bonus_points: number;
+  };
 }
 
 export interface PlayerPrediction {
@@ -24,15 +50,15 @@ export interface PlayerPrediction {
   team: string;
   position: string;
   price: number;
-  // Extend to 8 gameweeks for strategic planning
-  gw2_xp: number;
-  gw3_xp: number;
-  gw4_xp: number;
-  gw5_xp: number;
-  gw6_xp: number;
-  gw7_xp: number;
-  gw8_xp: number;
-  gw9_xp: number;
+  // Extend to 8 gameweeks for strategic planning (GWP1 = next gameweek, GWP2 = next+1, etc.)
+  gwp1_xp: number;
+  gwp2_xp: number;
+  gwp3_xp: number;
+  gwp4_xp: number;
+  gwp5_xp: number;
+  gwp6_xp: number;
+  gwp7_xp: number;
+  gwp8_xp: number;
   total_3gw_xp: number; // Keep for backward compatibility
   total_8gw_xp: number; // Sum of all 8 gameweeks
   fixtures: any[];
@@ -69,38 +95,17 @@ interface PlayerClassification {
 export class FPLPredictor2025_26 {
   private model: any;
   private baselineData: Record<string, PlayerSeasonData> | null = null;
+  private isPredicting: boolean = false;
+  private predictionPromise: Promise<PlayerPrediction[]> | null = null;
 
   constructor() {
     this.model = require('../models/fplModel2025-26.json');
     // Load baseline data directly from static file
-    this.baselineData = baselineData2024_25 as Record<string, PlayerSeasonData>;
+    this.baselineData = baselineData2024_25.players as Record<string, PlayerSeasonData>;
     
-    // DEBUG: Check baseline data loading
-    console.log(`🔍 BASELINE DATA LOADED: ${this.baselineData ? Object.keys(this.baselineData).length : 0} players`);
+    // Baseline data loaded successfully
     if (this.baselineData) {
-      const samplePlayers = Object.keys(this.baselineData).slice(0, 5);
-      console.log(`🔍 SAMPLE BASELINE PLAYERS:`, samplePlayers);
-      
-      // Test specific players
-      if (this.baselineData['Mohamed Salah']) {
-        console.log(`✅ MOHAMED SALAH FOUND in baseline data`);
-        console.log(`📊 Salah data:`, {
-          name: this.baselineData['Mohamed Salah'].name,
-          element_type: this.baselineData['Mohamed Salah'].element_type,
-          team: this.baselineData['Mohamed Salah'].team,
-          historyLength: this.baselineData['Mohamed Salah'].season_history?.length || 0
-        });
-      } else {
-        console.log(`❌ MOHAMED SALAH NOT FOUND in baseline data`);
-      }
-      
-      // Check for any Salah variants
-      const salahVariants = Object.keys(this.baselineData).filter(name => 
-        name.toLowerCase().includes('salah')
-      );
-      if (salahVariants.length > 0) {
-        console.log(`🔍 SALAH VARIANTS FOUND:`, salahVariants);
-      }
+      console.log(`✅ BASELINE DATA LOADED: ${Object.keys(this.baselineData).length} players`);
     }
   }
 
@@ -112,6 +117,18 @@ export class FPLPredictor2025_26 {
     return this.baselineData !== null;
   }
 
+  getPredictionStatus(): boolean {
+    return this.isPredicting;
+  }
+
+  async cancelPredictions(): Promise<void> {
+    if (this.isPredicting) {
+      console.log(`🛑 Cancelling ongoing predictions`);
+      this.isPredicting = false;
+      this.predictionPromise = null;
+    }
+  }
+
   private calculateRollingFeatures(
     playerName: string,
     baselineHistory: any[],
@@ -120,17 +137,25 @@ export class FPLPredictor2025_26 {
     // Combine baseline and current season history
     const combinedHistory = [...(baselineHistory || []), ...(currentSeasonHistory || [])];
     
-    console.log(`🔍 COMBINED HISTORY DEBUG: ${playerName}`, {
-      baselineHistoryLength: baselineHistory?.length || 0,
-      currentSeasonLength: currentSeasonHistory?.length || 0,
-      combinedLength: combinedHistory.length,
-      baselineSample: baselineHistory?.slice(0, 2) || [],
-      currentSample: currentSeasonHistory?.slice(0, 2) || []
-    });
+    // Special debugging for Joao Pedro rolling points issue
+    if (playerName.includes('Pedro') || playerName.includes('João')) {
+      console.log(`🔍 JOAO PEDRO ROLLING DEBUG:`);
+      console.log(`  - playerName: "${playerName}"`);
+      console.log(`  - baselineHistory length: ${baselineHistory?.length || 0}`);
+      console.log(`  - currentSeasonHistory length: ${currentSeasonHistory?.length || 0}`);
+      console.log(`  - combinedHistory length: ${combinedHistory.length}`);
+      console.log(`  - last 5 games total_points:`, combinedHistory.slice(-5).map(g => g.total_points));
+      console.log(`  - last 3 games total_points:`, combinedHistory.slice(-3).map(g => g.total_points));
+      if (baselineHistory && baselineHistory.length > 0) {
+        console.log(`  - baseline sample (last 3):`, baselineHistory.slice(-3).map(g => ({ gw: g.round, pts: g.total_points, mins: g.minutes })));
+      }
+      if (currentSeasonHistory && currentSeasonHistory.length > 0) {
+        console.log(`  - current season sample:`, currentSeasonHistory.slice(0, 3).map(g => ({ gw: g.round, pts: g.total_points, mins: g.minutes })));
+      }
+    }
 
     if (combinedHistory.length === 0) {
       console.warn('⚠️ No historical data for player:', playerName);
-      console.log(`🔍 DEBUG: Baseline history length: ${baselineHistory?.length || 0}, Current season length: ${currentSeasonHistory?.length || 0}`);
       return this.createSyntheticBaseline({ web_name: playerName });
     }
 
@@ -217,21 +242,7 @@ export class FPLPredictor2025_26 {
       history_games: historyGames
     };
     
-    // DEBUG: Log rolling features calculation
-    console.log(`🔄 ROLLING FEATURES DEBUG: ${playerName}`, {
-      historyLength: combinedHistory.length,
-      baselineHistoryLength: baselineHistory?.length || 0,
-      currentSeasonLength: currentSeasonHistory?.length || 0,
-      last3Points: last3.map(g => g.total_points),
-      last5Points: last5.map(g => g.total_points),
-      last8Points: last8.map(g => g.total_points),
-      last15Points: last15.map(g => g.total_points),
-      roll3_points: result.roll3_points,
-      roll5_points: result.roll5_points,
-      roll8_points: result.roll8_points,
-      roll15_points: result.roll15_points,
-      dataQuality: result.data_quality
-    });
+
 
     // Ensure all values are valid numbers (excluding non-numeric fields)
     Object.keys(result).forEach(key => {
@@ -246,35 +257,156 @@ export class FPLPredictor2025_26 {
       }
     });
 
-
+    // More debugging for Joao Pedro
+    if (playerName.includes('Pedro') || playerName.includes('João')) {
+      console.log(`🔍 JOAO PEDRO ROLLING RESULT:`, {
+        roll3_points: result.roll3_points,
+        roll5_points: result.roll5_points,
+        roll8_points: result.roll8_points,
+        roll15_points: result.roll15_points,
+        data_quality: result.data_quality,
+        history_games: result.history_games
+      });
+    }
 
     return result;
   }
 
   private findPlayerBaseline(playerName: string, player?: any): PlayerSeasonData | null {
-    // DEBUG: Log the search attempt
-    console.log(`🔍 SEARCHING BASELINE: Looking for "${playerName}"`);
-    
-    // 0. If we have player object with first_name + second_name, construct full name
-    let fullName = playerName;
+    // 0. PRIORITY: If we have player object with first_name + second_name, construct the correct key
     if (player && player.first_name && player.second_name) {
-      fullName = `${player.first_name} ${player.second_name}`;
-      console.log(`🔍 CONSTRUCTED FULL NAME: "${playerName}" -> "${fullName}"`);
+      // The baseline data uses "FirstName_LastName" as keys (with underscore)
+      const nameKey = `${player.first_name}_${player.second_name}`;
       
-      // Try exact match with full name first
-      if (this.baselineData?.[fullName]) {
-        console.log(`✅ FULL NAME EXACT MATCH: Found "${fullName}" in baseline data`);
-        return this.baselineData[fullName];
+      // Get baseline keys for searching
+      const allKeys = Object.keys(this.baselineData || {});
+      
+      // Special debugging for Salah only
+      if (player.web_name === 'Salah') {
+        console.log(`🔍 SALAH DEBUG:`);
+        console.log(`  - first_name: "${player.first_name}"`);
+        console.log(`  - second_name: "${player.second_name}"`);
+        console.log(`  - constructed nameKey: "${nameKey}"`);
+        console.log(`  - baseline data loaded: ${!!this.baselineData}`);
+        console.log(`  - total baseline keys: ${allKeys.length}`);
+        console.log(`  - keys containing "Mohamed":`, allKeys.filter(key => key.toLowerCase().includes('mohamed')).slice(0, 5));
+        console.log(`  - keys containing "Salah":`, allKeys.filter(key => key.toLowerCase().includes('salah')).slice(0, 5));
+        console.log(`  - exact match for "${nameKey}": ${!!this.baselineData?.[nameKey]}`);
+      }
+      
+      // Special debugging for Joao Pedro
+      if (player.web_name === 'João Pedro' || player.web_name === 'Joao Pedro' || player.web_name.includes('Pedro')) {
+        console.log(`🔍 JOAO PEDRO DEBUG:`);
+        console.log(`  - web_name: "${player.web_name}"`);
+        console.log(`  - first_name: "${player.first_name}"`);
+        console.log(`  - second_name: "${player.second_name}"`);
+        console.log(`  - constructed nameKey: "${nameKey}"`);
+        console.log(`  - baseline data loaded: ${!!this.baselineData}`);
+        console.log(`  - keys containing "Pedro":`, allKeys.filter(key => key.toLowerCase().includes('pedro')).slice(0, 10));
+        console.log(`  - keys containing "João" or "Joo":`, allKeys.filter(key => key.toLowerCase().includes('joão') || key.toLowerCase().includes('joo')).slice(0, 10));
+        console.log(`  - exact match for "${nameKey}": ${!!this.baselineData?.[nameKey]}`);
+      }
+      
+            // Try exact match with name_key first (most reliable)
+      if (this.baselineData?.[nameKey]) {
+        return this.baselineData[nameKey];
+      }
+      
+      // Try reversed name order (e.g., "Heung-min Son" -> "Son_Heung-min")
+      const reversedNameKey = `${player.second_name}_${player.first_name}`;
+      if (this.baselineData?.[reversedNameKey]) {
+        return this.baselineData[reversedNameKey];
+      }
+      
+      // Try with spaces instead of underscores (fallback)
+      const spaceName = `${player.first_name} ${player.second_name}`;
+      if (this.baselineData?.[spaceName]) {
+        return this.baselineData[spaceName];
+      }
+      
+      // Try case-insensitive match
+      const caseInsensitiveMatch = allKeys.find(key => 
+        key.toLowerCase() === nameKey.toLowerCase()
+      );
+      if (caseInsensitiveMatch && this.baselineData) {
+        return this.baselineData[caseInsensitiveMatch];
+      }
+      
+      // Try partial match with first and last name
+      const partialMatches = allKeys.filter(key => {
+        const keyLower = key.toLowerCase();
+        const firstNameLower = player.first_name.toLowerCase();
+        const secondNameLower = player.second_name.toLowerCase();
+        return keyLower.includes(firstNameLower) && keyLower.includes(secondNameLower);
+      });
+
+      if (partialMatches.length > 0 && this.baselineData) {
+        const bestMatch = partialMatches[0];
+        return this.baselineData[bestMatch];
+      }
+      
+      // Special fallback for players like Salah - search for any key containing both names
+      if (player && player.first_name && player.second_name) {
+        const firstNameLower = player.first_name.toLowerCase();
+        const secondNameLower = player.second_name.toLowerCase();
+        
+        const fallbackMatches = allKeys.filter(key => {
+          const keyLower = key.toLowerCase();
+          // Look for keys that contain both first and last name (in any order)
+          return keyLower.includes(firstNameLower) && keyLower.includes(secondNameLower);
+        });
+        
+                            if (fallbackMatches.length > 0 && this.baselineData) {
+                      const bestFallback = fallbackMatches[0];
+                      return this.baselineData[bestFallback];
+                    }
       }
     }
     
-    // 1. Try exact match with original name
+    // 1. Try exact match with original name (fallback)
     if (this.baselineData?.[playerName]) {
-      console.log(`✅ EXACT MATCH: Found "${playerName}" in baseline data`);
       return this.baselineData[playerName];
     }
 
-    // Try normalized name (remove accents, lowercase)
+    // 2. Try to find by name_key pattern (FirstName_LastName)
+    // Convert "Mohamed Salah" to "Mohamed_Salah"
+    const underscoreName = playerName.replace(/\s+/g, '_');
+    if (this.baselineData?.[underscoreName]) {
+      return this.baselineData[underscoreName];
+    }
+
+    // 3. Try to find by last name only (e.g., "Salah" -> "Mohamed_Salah")
+    const nameParts = playerName.split(/\s+/);
+    if (nameParts.length > 1) {
+      const lastName = nameParts[nameParts.length - 1];
+      
+      // Find all keys containing the last name
+      const lastNameMatches = Object.keys(this.baselineData || {}).filter(key => 
+        key.toLowerCase().includes(lastName.toLowerCase())
+      );
+      
+      if (lastNameMatches.length > 0) {
+        // If multiple matches, try to find the best one by checking first name
+        if (nameParts.length > 0) {
+          const firstName = nameParts[0];
+          const bestMatch = lastNameMatches.find(key => 
+            key.toLowerCase().includes(firstName.toLowerCase())
+          );
+          
+                  if (bestMatch && this.baselineData) {
+          return this.baselineData[bestMatch];
+        }
+      }
+      
+      // Fallback to first match
+      const firstMatch = lastNameMatches[0];
+      if (firstMatch && this.baselineData) {
+        return this.baselineData[firstMatch];
+      }
+      }
+    }
+
+    // 4. Try normalized name (remove accents, lowercase)
     const normalizedName = playerName
       .toLowerCase()
       .normalize('NFD')
@@ -289,28 +421,24 @@ export class FPLPredictor2025_26 {
         .replace(/[^a-z0-9\s]/g, '');
 
       if (normalizedName === normalizedBaselineName) {
-        console.log(`✅ NORMALIZED MATCH: Found "${name}" for "${playerName}"`);
         return data;
       }
     }
 
-    // Try smart name matching for common FPL naming patterns
+    // 5. Try smart name matching for common FPL naming patterns
     const smartMatches = this.findSmartMatches(playerName);
     if (smartMatches.length > 0) {
       const bestMatch = smartMatches[0];
-      console.log(`✅ SMART MATCH: Found "${bestMatch.name}" for "${playerName}" (score: ${bestMatch.score})`);
       return bestMatch.data;
     }
 
-    // Try fuzzy matching for common name variations
+    // 6. Try fuzzy matching for common name variations
     const fuzzyMatches = this.findFuzzyMatches(playerName);
     if (fuzzyMatches.length > 0) {
       const bestMatch = fuzzyMatches[0];
-      console.log(`🔍 FUZZY MATCH: Found "${bestMatch.name}" for "${playerName}" (score: ${bestMatch.score})`);
       return bestMatch.data;
     }
 
-    console.log(`❌ NO BASELINE FOUND: "${playerName}" not found in baseline data`);
     return null;
   }
 
@@ -320,18 +448,7 @@ export class FPLPredictor2025_26 {
     const playerNameLower = playerName.toLowerCase();
     const matches: Array<{name: string, data: PlayerSeasonData, score: number}> = [];
     
-    // DEBUG: Log what we're searching for
-    console.log(`🔍 SMART MATCHING: Looking for "${playerName}" (lowercase: "${playerNameLower}")`);
-    
-    // Test the specific case for Salah and M.Salah
-    if (playerNameLower === 'salah' || playerNameLower === 'm.salah') {
-      console.log(`🔍 SPECIAL CASE: Looking for "${playerName}" - testing all baseline names`);
-      for (const [name, data] of Object.entries(this.baselineData)) {
-        if (name.toLowerCase().includes('salah')) {
-          console.log(`🔍 FOUND SALAH VARIANT: "${name}"`);
-        }
-      }
-    }
+
     
     for (const [name, data] of Object.entries(this.baselineData)) {
       const baselineNameLower = name.toLowerCase();
@@ -344,38 +461,33 @@ export class FPLPredictor2025_26 {
         if (baselineNameLower.endsWith(playerNameLower)) {
           score += 30;
         }
-        console.log(`🔍 CONTAINS MATCH: "${name}" contains "${playerName}" (score: ${score})`);
-      }
-      
-      // Handle abbreviated names like "M.Salah" -> "Mohamed Salah"
-      if (playerNameLower.includes('.')) {
-        const lastName = playerNameLower.split('.').pop(); // Get "salah" from "m.salah"
-        if (lastName && baselineNameLower.includes(lastName)) {
-          score += 60; // Higher score for abbreviated name matches
-          console.log(`🔍 ABBREVIATED MATCH: "${name}" matches "${playerName}" (lastName: "${lastName}", score: ${score})`);
+        // Handle abbreviated names like "M.Salah" -> "Mohamed Salah"
+        if (playerNameLower.includes('.')) {
+          const lastName = playerNameLower.split('.').pop(); // Get "salah" from "m.salah"
+          if (lastName && baselineNameLower.includes(lastName)) {
+            score += 60; // Higher score for abbreviated name matches
+          }
         }
-      }
-      
-      // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
-      if (playerNameLower.includes(baselineNameLower)) {
-        score += 40;
-        console.log(`🔍 CONTAINED MATCH: "${playerName}" contains "${name}" (score: ${score})`);
-      }
-      
-      // Check for last name matches (common case)
-      const baselineWords = baselineNameLower.split(/\s+/);
-      const playerWords = playerNameLower.split(/\s+/);
-      
-      // Check if any word from FPL name matches any word from baseline name
-      for (const playerWord of playerWords) {
-        for (const baselineWord of baselineWords) {
-          if (playerWord === baselineWord && playerWord.length > 2) {
-            score += 25;
-            // Bonus for exact word match
-            if (playerWord.length > 3) {
-              score += 15;
+        
+        // Check if baseline name is contained in FPL name (e.g., "De Bruyne" in "De Bruyne")
+        if (playerNameLower.includes(baselineNameLower)) {
+          score += 40;
+        }
+        
+        // Check for last name matches (common case)
+        const baselineWords = baselineNameLower.split(/\s+/);
+        const playerWords = playerNameLower.split(/\s+/);
+        
+        // Check if any word from FPL name matches any word from baseline name
+        for (const playerWord of playerWords) {
+          for (const baselineWord of baselineWords) {
+            if (playerWord === baselineWord && playerWord.length > 2) {
+              score += 25;
+              // Bonus for exact word match
+              if (playerWord.length > 3) {
+                score += 15;
+              }
             }
-            console.log(`🔍 WORD MATCH: "${playerWord}" matches "${baselineWord}" in "${name}" (score: ${score})`);
           }
         }
       }
@@ -383,18 +495,11 @@ export class FPLPredictor2025_26 {
       // Check for common FPL naming patterns
       if (this.isCommonFPLPattern(playerName, name)) {
         score += 20;
-        console.log(`🔍 PATTERN MATCH: "${name}" matches common pattern for "${playerName}" (score: ${score})`);
       }
       
       if (score > 0) {
         matches.push({ name, data, score });
-        console.log(`🔍 ADDED MATCH: "${name}" with score ${score}`);
       }
-    }
-    
-    console.log(`🔍 SMART MATCHES FOUND: ${matches.length} matches for "${playerName}"`);
-    if (matches.length > 0) {
-      console.log(`🔍 TOP MATCHES:`, matches.slice(0, 3).map(m => `${m.name} (${m.score})`));
     }
     
     // Sort by score (highest first)
@@ -598,46 +703,38 @@ export class FPLPredictor2025_26 {
 
   private predict(features: RollingFeatures, context: any): number {
     const weights = this.model.weights;
-    
+
     // 1. Base prediction from rolling form features
     let prediction = 
       features.roll3_points * weights.form_weights.roll3 +
       features.roll5_points * weights.form_weights.roll5 +
       features.roll8_points * weights.form_weights.roll8 +
       features.roll15_points * weights.form_weights.roll15;
-    
-    // DEBUG: Log the base prediction calculation
-    console.log(`🔍 BASE PREDICTION DEBUG: ${context.player.web_name}`, {
-      roll3_points: features.roll3_points,
-      roll5_points: features.roll5_points,
-      roll8_points: features.roll8_points,
-      roll15_points: features.roll15_points,
-      weights: weights.form_weights,
-      basePrediction: prediction
-    });
+
+
     
     // 2. Minutes reliability adjustment
     const minutesReliability = Math.min(features.roll5_minutes / 90.0, 1.2);
     prediction *= minutesReliability * weights.context_weights.minutes_factor;
-    
+
     // 3. Consistency bonus (consistent players get boost)
     const consistencyFactor = weights.context_weights.consistency_factor * features.roll5_consistency;
     prediction *= (0.8 + 0.4 * consistencyFactor);
-    
+
     // 4. Starts reliability (regular starters get boost)
     const startsFactor = weights.context_weights.starts_factor * features.roll5_starts;
     prediction *= (0.7 + 0.3 * startsFactor);
-    
+
     // 5. Advanced statistics boosts
     const bpsBoost = features.avg_bps * weights.feature_scaling.bps_scale;
     prediction += bpsBoost;
-    
+
     const ictBoost = features.avg_ict * weights.feature_scaling.ict_scale;
     prediction += ictBoost;
-    
+
     const expectedBoost = features.avg_expected_gi * weights.feature_scaling.expected_gi_scale;
     prediction += expectedBoost;
-    
+
     // 6. CRITICAL: Apply 2025-26 rule adjustments (was missing!)
     prediction = this.apply2025_26Rules(context.player, prediction);
     
@@ -656,44 +753,20 @@ export class FPLPredictor2025_26 {
       const fdrMultiplier = this.getFixtureDifficultyMultiplier(context.fixture, context.is_home);
       prediction *= fdrMultiplier;
       
-      // Add logging for FDR adjustments
-      if (Math.abs(fdrMultiplier - 1.0) > 0.01) {
-        console.log(`🏟️ FDR APPLIED: ${context.player.web_name} GW${context.gameweek}`, {
-          opponent: this.getOpponentName(context.fixture, []),
-          homeAway: context.is_home ? 'H' : 'A',
-          difficulty: context.fixture.difficulty || context.fixture.team_h_difficulty || context.fixture.team_a_difficulty || 'unknown',
-          multiplier: `${fdrMultiplier.toFixed(2)}x`,
-          adjustedPoints: prediction.toFixed(1)
-        });
-      }
+
     }
     
     // 10. CRITICAL: Apply new player penalties (was missing!)
     const classification = this.classifyPlayer(context.player, context.elementSummary || {});
     prediction *= classification.penaltyMultiplier;
     
-    // Add logging for validation
-    if (classification.penaltyMultiplier < 0.9) {
-      console.log(`🔧 PENALTY APPLIED: ${context.player.web_name}`, {
-        penalty: `${classification.penaltyMultiplier.toFixed(2)}x`,
-        newToPL: classification.isNewToPL,
-        promotedClub: classification.isFromPromotedClub,
-        dataQuality: classification.dataQuality || 'unknown'
-      });
-    }
+
     
     // 11. CRITICAL: Apply conservative caps (was missing!)
     const originalPrediction = prediction;
     prediction = this.applyConservativeCaps(prediction, context.player, classification, context.gameweek || 2);
     
-    // Add logging for caps
-    if (Math.abs(originalPrediction - prediction) > 0.1) {
-      console.log(`📊 CAP APPLIED: ${context.player.web_name}`, {
-        original: originalPrediction.toFixed(1),
-        capped: prediction.toFixed(1),
-        reason: classification.dataQuality
-      });
-    }
+
     
     // 12. Availability scaling
     if (context.player.chance_of_playing_next_round !== null && 
@@ -706,15 +779,7 @@ export class FPLPredictor2025_26 {
     const minPrediction = classification.penaltyMultiplier < 0.8 ? 0.5 : 1.0;
     const finalPrediction = Math.max(minPrediction, Math.min(15.0, prediction));
     
-    // DEBUG: Log the final prediction breakdown
-    console.log(`🎯 FINAL PREDICTION DEBUG: ${context.player.web_name}`, {
-      basePrediction: prediction,
-      classification: classification,
-      minPrediction,
-      finalPrediction,
-      gameweek: context.gameweek,
-      fixture: context.fixture ? `${context.is_home ? 'H' : 'A'} vs ${this.getOpponentName(context.fixture, [])}` : 'No fixture'
-    });
+
     
     return finalPrediction;
   }
@@ -728,6 +793,7 @@ export class FPLPredictor2025_26 {
   }
 
   private shouldPlayerPlay(player: any, elementSummary: any): boolean {
+    
     // Check if player is injured or not expected to play
     if (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round !== undefined) {
       if (player.chance_of_playing_next_round < 25) {
@@ -735,14 +801,16 @@ export class FPLPredictor2025_26 {
       }
     }
     
-    // Check if player has recent minutes
+    // Check if player has recent minutes - but be more lenient for new players
     if (elementSummary.history && elementSummary.history.length > 0) {
       const recentGames = elementSummary.history.slice(-3);
       const avgMinutes = recentGames.reduce((sum: number, game: any) => sum + (game.minutes || 0), 0) / recentGames.length;
       
       if (avgMinutes < 15) {
-        return false;
+        // Don't filter out - just warn
       }
+    } else {
+      // Don't filter out - we can use baseline data
     }
     
     // Check if player is suspended or has other issues
@@ -761,6 +829,28 @@ export class FPLPredictor2025_26 {
     await this.initialize();
 
     try {
+            // Log basic player info for Salah (including M.Salah)
+      if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+        console.log(`🔍 SALAH PLAYER INFO:`, {
+          playerId: player.id,
+          firstName: player.first_name,
+          secondName: player.second_name,
+          teamId: player.team,
+          historyLength: elementSummary?.history?.length || 0,
+          fixturesLength: elementSummary?.fixtures?.length || 0
+        });
+      }
+      
+      // Also log any player with "Salah" in the name for debugging
+      if (player.web_name && player.web_name.toLowerCase().includes('salah')) {
+        console.log(`🔍 SALAH-RELATED PLAYER FOUND:`, {
+          web_name: player.web_name,
+          id: player.id,
+          firstName: player.first_name,
+          secondName: player.second_name
+        });
+      }
+
       // Check if player should play
       if (!this.shouldPlayerPlay(player, elementSummary)) {
         return {
@@ -769,113 +859,176 @@ export class FPLPredictor2025_26 {
           team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
           position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
           price: (player.now_cost || 0) / 10,
-          gw2_xp: 0,
-          gw3_xp: 0,
-          gw4_xp: 0,
-          gw5_xp: 0,
-          gw6_xp: 0,
-          gw7_xp: 0,
-          gw8_xp: 0,
-          gw9_xp: 0,
+          gwp1_xp: 0,
+          gwp2_xp: 0,
+          gwp3_xp: 0,
+          gwp4_xp: 0,
+          gwp5_xp: 0,
+          gwp6_xp: 0,
+          gwp7_xp: 0,
+          gwp8_xp: 0,
           total_3gw_xp: 0,
           total_8gw_xp: 0,
           fixtures: []
         };
       }
 
-                const baselineData = this.findPlayerBaseline(player.web_name, player);
-      console.log(`🔍 BASELINE DATA FOR ${player.web_name}:`, {
-        found: !!baselineData,
-        baselineHistoryLength: baselineData?.season_history?.length || 0,
-        currentHistoryLength: elementSummary.history?.length || 0,
-        baselineDataKeys: baselineData ? Object.keys(baselineData) : [],
-        seasonHistorySample: baselineData?.season_history?.slice(0, 2) || []
-      });
+      const baselineData = this.findPlayerBaseline(`${player.first_name} ${player.second_name}`, player);
       
-      const features = this.calculateRollingFeatures(
-        player.web_name,
+      // Log baseline data info for Salah (including M.Salah)
+      if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+        console.log(`🔍 SALAH BASELINE DATA:`, {
+          found: !!baselineData,
+          baselineHistoryLength: baselineData?.season_history?.length || 0,
+          currentHistoryLength: elementSummary.history?.length || 0,
+          baselineDataSample: baselineData?.season_history?.slice(0, 2) || []
+        });
+      }
+
+    const features = this.calculateRollingFeatures(
+      player.web_name,
         baselineData?.season_history || [],
-        elementSummary.history || []
-      );
+      elementSummary.history || []
+    );
+
+      // Log features for Salah
+      if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+        console.log(`🔍 SALAH FEATURES:`, {
+          roll3_points: features.roll3_points,
+          roll5_points: features.roll5_points,
+          roll8_points: features.roll8_points,
+          roll15_points: features.roll15_points,
+          roll3_minutes: features.roll3_minutes,
+          roll5_minutes: features.roll5_minutes,
+          roll8_minutes: features.roll8_minutes
+        });
+      }
+      
+      // Get player classification for detailed XP breakdown
+      const classification = this.classifyPlayer(player, elementSummary);
+      const has2024_25Data = !!baselineData;
+      const baselineHistoryLength = baselineData?.season_history?.length || 0;
+      const currentHistoryLength = elementSummary.history?.length || 0;
+      const effectiveHistoryLength = baselineHistoryLength + currentHistoryLength;
+      const hasInsufficientData = effectiveHistoryLength < 5;
+      
+      // Log classification for Salah
+      if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+        console.log(`🔍 SALAH CLASSIFICATION:`, {
+          isNewToPL: classification.isNewToPL,
+          isFromPromotedClub: classification.isFromPromotedClub,
+          isYoungPlayer: classification.isYoungPlayer,
+          hasInsufficientData: hasInsufficientData,
+          has2024_25Data: has2024_25Data,
+          baselineHistoryLength: baselineHistoryLength,
+          currentHistoryLength: currentHistoryLength,
+          effectiveHistoryLength: effectiveHistoryLength,
+          penaltyMultiplier: classification.penaltyMultiplier,
+          dataQuality: classification.dataQuality
+        });
+      }
       
 
 
       // Use up to 8 future fixtures for strategic planning; if missing, synthesize neutral fixtures
       let upcomingFixtures = (elementSummary.fixtures || []).slice(0, 8);
-      if (!upcomingFixtures || upcomingFixtures.length === 0) {
+    if (!upcomingFixtures || upcomingFixtures.length === 0) {
         // Synthesize 8 neutral fixtures with average difficulty
-        upcomingFixtures = [
-          { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 5, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 6, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 7, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 8, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3 },
-          { event: 9, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3 },
+      upcomingFixtures = [
+          { event: 2, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 3, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 4, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 5, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 6, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 7, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 8, is_home: true, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
+          { event: 9, is_home: false, team_a: player.team, team_h: player.team, difficulty: 3, team_h_difficulty: 3, team_a_difficulty: 3 },
         ];
       } else if (upcomingFixtures.length < 8) {
-        const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
+      const lastEvent = upcomingFixtures[upcomingFixtures.length - 1].event || 1;
         while (upcomingFixtures.length < 8) {
-          upcomingFixtures.push({
-            event: lastEvent + (upcomingFixtures.length),
-            is_home: upcomingFixtures.length % 2 === 0,
-            team_a: player.team,
-            team_h: player.team,
-            difficulty: 3,
-          });
-        }
+        upcomingFixtures.push({
+          event: lastEvent + (upcomingFixtures.length),
+          is_home: upcomingFixtures.length % 2 === 0,
+          team_a: player.team,
+          team_h: player.team,
+          difficulty: 3,
+            team_h_difficulty: 3,
+            team_a_difficulty: 3,
+        });
       }
+    }
 
-      const predictions: any[] = [];
+    const predictions: any[] = [];
 
-      let gw2_xp = 0, gw3_xp = 0, gw4_xp = 0, gw5_xp = 0, gw6_xp = 0, gw7_xp = 0, gw8_xp = 0, gw9_xp = 0;
+      let gwp1_xp = 0, gwp2_xp = 0, gwp3_xp = 0, gwp4_xp = 0, gwp5_xp = 0, gwp6_xp = 0, gwp7_xp = 0, gwp8_xp = 0;
 
       for (let i = 0; i < upcomingFixtures.length && i < 8; i++) {
-        const fixture = upcomingFixtures[i];
+      const fixture = upcomingFixtures[i];
 
-        const context = {
+      const context = {
           player: player,
           elementSummary: elementSummary,
-          element_type: player.element_type,
-          is_home: !!fixture.is_home,
+        element_type: player.element_type,
+        is_home: !!fixture.is_home,
           fixture: fixture, // Add fixture data for FDR calculation
           chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100,
           gameweek: fixture.event || (2 + i) // Add gameweek for conservative caps
-        };
+      };
 
-        const expectedPoints = this.predict(features, context);
+      const expectedPoints = this.predict(features, context);
         
-        const roundedPoints = Math.round(expectedPoints * 10) / 10;
+
+        
+      const roundedPoints = Math.round(expectedPoints * 10) / 10;
 
         // Final safety check - ensure we have valid points
         const finalPoints = isNaN(roundedPoints) || !isFinite(roundedPoints) ? 0 : Math.max(0, roundedPoints);
 
-        const fixtureData = {
-          gameweek: fixture.event ?? (2 + i),
-          opponent: this.getOpponentName(fixture, teams),
-          home_away: fixture.is_home ? 'H' as const : 'A' as const,
-          difficulty: fixture.difficulty ?? 3,
-          expected_points: finalPoints
-        };
+      const fixtureData = {
+        gameweek: fixture.event ?? (2 + i),
+        opponent: this.getOpponentName(fixture, teams),
+        home_away: fixture.is_home ? 'H' as const : 'A' as const,
+        difficulty: fixture.difficulty ?? 3,
+          expected_points: finalPoints,
+          // Add the fields that the XP tab expects
+          is_home: fixture.is_home,
+          team_h: fixture.team_h,
+          team_a: fixture.team_a,
+          team_h_difficulty: fixture.team_h_difficulty ?? fixture.difficulty ?? 3,
+          team_a_difficulty: fixture.team_a_difficulty ?? fixture.difficulty ?? 3
+      };
 
-        predictions.push(fixtureData);
+      predictions.push(fixtureData);
 
-        // Assign to specific gameweek variables
+        // Assign to specific gameweek variables (GWP1 = next gameweek, GWP2 = next+1, etc.)
         switch (i) {
-          case 0: gw2_xp = finalPoints; break;
-          case 1: gw3_xp = finalPoints; break;
-          case 2: gw4_xp = finalPoints; break;
-          case 3: gw5_xp = finalPoints; break;
-          case 4: gw6_xp = finalPoints; break;
-          case 5: gw7_xp = finalPoints; break;
-          case 6: gw8_xp = finalPoints; break;
-          case 7: gw9_xp = finalPoints; break;
+          case 0: gwp1_xp = finalPoints; break;
+          case 1: gwp2_xp = finalPoints; break;
+          case 2: gwp3_xp = finalPoints; break;
+          case 3: gwp4_xp = finalPoints; break;
+          case 4: gwp5_xp = finalPoints; break;
+          case 5: gwp6_xp = finalPoints; break;
+          case 6: gwp7_xp = finalPoints; break;
+          case 7: gwp8_xp = finalPoints; break;
         }
       }
 
-      const total_3gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp) * 10) / 10;
-      const total_8gw_xp = Math.round((gw2_xp + gw3_xp + gw4_xp + gw5_xp + gw6_xp + gw7_xp + gw8_xp + gw9_xp) * 10) / 10;
+      const total_3gw_xp = Math.round((gwp1_xp + gwp2_xp + gwp3_xp) * 10) / 10;
+      const total_8gw_xp = Math.round((gwp1_xp + gwp2_xp + gwp3_xp + gwp4_xp + gwp5_xp + gwp6_xp + gwp7_xp + gwp8_xp) * 10) / 10;
+
+      // Log final XP results for Salah
+      if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+        console.log(`🎯 SALAH FINAL XP RESULTS:`, {
+          gwp1_xp: gwp1_xp,
+          gwp2_xp: gwp2_xp,
+          gwp3_xp: gwp3_xp,
+          total_3gw_xp: total_3gw_xp,
+          total_8gw_xp: total_8gw_xp,
+          baselineUsed: !!baselineData,
+          baselineHistoryLength: baselineData?.season_history?.length || 0
+        });
+      }
 
       // Final validation of all values
       const result = {
@@ -884,17 +1037,30 @@ export class FPLPredictor2025_26 {
         team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
         position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
         price: (player.now_cost || 0) / 10,
-        gw2_xp: isNaN(gw2_xp) ? 0 : gw2_xp,
-        gw3_xp: isNaN(gw3_xp) ? 0 : gw3_xp,
-        gw4_xp: isNaN(gw4_xp) ? 0 : gw4_xp,
-        gw5_xp: isNaN(gw5_xp) ? 0 : gw5_xp,
-        gw6_xp: isNaN(gw6_xp) ? 0 : gw6_xp,
-        gw7_xp: isNaN(gw7_xp) ? 0 : gw7_xp,
-        gw8_xp: isNaN(gw8_xp) ? 0 : gw8_xp,
-        gw9_xp: isNaN(gw9_xp) ? 0 : gw9_xp,
+        gwp1_xp: isNaN(gwp1_xp) ? 0 : gwp1_xp,
+        gwp2_xp: isNaN(gwp2_xp) ? 0 : gwp2_xp,
+        gwp3_xp: isNaN(gwp3_xp) ? 0 : gwp3_xp,
+        gwp4_xp: isNaN(gwp4_xp) ? 0 : gwp4_xp,
+        gwp5_xp: isNaN(gwp5_xp) ? 0 : gwp5_xp,
+        gwp6_xp: isNaN(gwp6_xp) ? 0 : gwp6_xp,
+        gwp7_xp: isNaN(gwp7_xp) ? 0 : gwp7_xp,
+        gwp8_xp: isNaN(gwp8_xp) ? 0 : gwp8_xp,
         total_3gw_xp: isNaN(total_3gw_xp) ? 0 : total_3gw_xp,
         total_8gw_xp: isNaN(total_8gw_xp) ? 0 : total_8gw_xp,
-        fixtures: predictions
+        fixtures: predictions,
+        teams: teams, // Add teams array for XP tab fixture display
+        // Classification and data quality details for XP tab
+        dataQuality: classification.dataQuality,
+        isNewToPL: classification.isNewToPL,
+        isYoungPlayer: classification.isYoungPlayer,
+        isFromPromotedClub: classification.isFromPromotedClub,
+        penaltyMultiplier: classification.penaltyMultiplier,
+        hasInsufficientData: hasInsufficientData,
+        has2024_25Data: has2024_25Data,
+        baselineHistoryLength: baselineHistoryLength,
+        currentHistoryLength: currentHistoryLength,
+        effectiveHistoryLength: effectiveHistoryLength,
+        baselineDataSample: baselineData?.season_history?.slice(0, 3) || []
       };
 
 
@@ -904,84 +1070,123 @@ export class FPLPredictor2025_26 {
       console.error('🚨 Error predicting player:', player.web_name, error);
       
       // Return safe fallback prediction
-      return {
-        player_id: player.id,
-        name: player.web_name,
-        team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
-        position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
-        price: (player.now_cost || 0) / 10,
-        gw2_xp: 0,
-        gw3_xp: 0,
-        gw4_xp: 0,
-        gw5_xp: 0,
-        gw6_xp: 0,
-        gw7_xp: 0,
-        gw8_xp: 0,
-        gw9_xp: 0,
+    return {
+      player_id: player.id,
+      name: player.web_name,
+      team: teams.find(t => t.id === player.team)?.short_name || 'TBD',
+      position: (['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] as any),
+      price: (player.now_cost || 0) / 10,
+        gwp1_xp: 0,
+        gwp2_xp: 0,
+        gwp3_xp: 0,
+        gwp4_xp: 0,
+        gwp5_xp: 0,
+        gwp6_xp: 0,
+        gwp7_xp: 0,
+        gwp8_xp: 0,
         total_3gw_xp: 0,
         total_8gw_xp: 0,
-        fixtures: []
+        fixtures: [],
+        teams: [], // Add empty teams array for fallback
+        // Classification and data quality details for XP tab
+        dataQuality: 'error',
+        isNewToPL: false,
+        isYoungPlayer: false,
+        isFromPromotedClub: false,
+        penaltyMultiplier: 1.0,
+        hasInsufficientData: true,
+        has2024_25Data: false,
+        baselineHistoryLength: 0,
+        currentHistoryLength: 0,
+        effectiveHistoryLength: 0,
+        baselineDataSample: []
       };
     }
   }
 
   async predictAllPlayers(fplApiService: any, onProgress?: (current: number, total: number) => void): Promise<PlayerPrediction[]> {
+    // Prevent multiple simultaneous predictions
+    if (this.isPredicting) {
+      console.log(`🔄 Prediction already in progress, returning existing promise`);
+      return this.predictionPromise!;
+    }
+
+    // Ensure we're initialized
+    if (!this.isInitialized()) {
+      throw new Error('FPLPredictor not initialized. Call initialize() first.');
+    }
+
+    this.isPredicting = true;
+    this.predictionPromise = this._predictAllPlayers(fplApiService, onProgress);
+    
+    try {
+      const result = await this.predictionPromise;
+      return result;
+    } catch (error) {
+      console.error(`🚨 Prediction error:`, error);
+      throw error;
+    } finally {
+      this.isPredicting = false;
+      this.predictionPromise = null;
+    }
+  }
+
+  private async _predictAllPlayers(fplApiService: any, onProgress?: (current: number, total: number) => void): Promise<PlayerPrediction[]> {
     const bootstrap = await fplApiService.fetchBootstrapData();
     const allPlayers = bootstrap.elements;
     const teams = bootstrap.teams;
     
-    console.log(`🔍 PREDICT ALL PLAYERS: Processing ${allPlayers.length} players from FPL API`);
-    
-    // Debug: Check if Salah is in the FPL API data
-    const salahPlayer = allPlayers.find((p: any) => p.web_name.toLowerCase().includes('salah'));
-    if (salahPlayer) {
-      console.log(`✅ SALAH FOUND in FPL API data:`, {
-        id: salahPlayer.id,
-        name: salahPlayer.web_name,
-        team: salahPlayer.team,
-        position: salahPlayer.element_type,
-        cost: salahPlayer.now_cost
-      });
-    } else {
-      console.log(`❌ SALAH NOT FOUND in FPL API data`);
-      console.log(`🔍 SAMPLE FPL PLAYERS:`, allPlayers.slice(0, 10).map((p: any) => p.web_name));
-      
-      // Check for any Liverpool players
-      const liverpoolPlayers = allPlayers.filter((p: any) => p.team === 11); // Liverpool team ID
-      if (liverpoolPlayers.length > 0) {
-        console.log(`🔍 LIVERPOOL PLAYERS:`, liverpoolPlayers.slice(0, 5).map((p: any) => p.web_name));
-      }
-    }
-    
+    console.log(`🔄 Starting predictions for ${allPlayers.length} players (batched processing)`);
+
     const results: PlayerPrediction[] = [];
-    const batchSize = 50;
+    const batchSize = 100; // Increased batch size for better performance
     let successCount = 0;
     let errorCount = 0;
 
+    // Process players in batches for better performance while maintaining control
     for (let i = 0; i < allPlayers.length; i += batchSize) {
+      // Check if predictions were cancelled
+      if (!this.isPredicting) {
+        console.log(`🛑 Predictions cancelled at batch ${Math.floor(i / batchSize) + 1}`);
+        break;
+      }
+
       const batch = allPlayers.slice(i, i + batchSize);
-
-
+      console.log(`🔄 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allPlayers.length / batchSize)} (${batch.length} players)`);
+      
+      // Log first few players in batch for debugging
+      const samplePlayers = batch.slice(0, 5).map((p: any) => p.web_name);
+      console.log(`🔍 Sample players in batch:`, samplePlayers);
+      
+      // Check if Salah is in this batch (including M.Salah)
+      const salahInBatch = batch.find((p: any) => p.web_name === 'Salah' || p.web_name === 'M.Salah');
+      if (salahInBatch) {
+        console.log(`🎯 SALAH FOUND IN BATCH ${Math.floor(i / batchSize) + 1}! (${salahInBatch.web_name})`);
+      }
+      
+      // Process batch with Promise.all but with controlled concurrency
       const batchPromises = batch.map(async (player: any) => {
         try {
+                  // Log when we start processing Salah (including M.Salah)
+        if (player.web_name === 'Salah' || player.web_name === 'M.Salah') {
+          console.log(`🚀 STARTING SALAH PREDICTION: Player ID ${player.id} (${player.web_name})`);
+        }
+          
           const elementSummary = await fplApiService.getElementSummary(player.id);
           const prediction = await this.predictPlayer(player, elementSummary, teams);
           
           if (prediction && 
-              !isNaN(prediction.gw2_xp) && !isNaN(prediction.gw3_xp) && !isNaN(prediction.gw4_xp) &&
-              !isNaN(prediction.gw5_xp) && !isNaN(prediction.gw6_xp) && !isNaN(prediction.gw7_xp) &&
-              !isNaN(prediction.gw8_xp) && !isNaN(prediction.gw9_xp) &&
+              !isNaN(prediction.gwp1_xp) && !isNaN(prediction.gwp2_xp) && !isNaN(prediction.gwp3_xp) &&
+              !isNaN(prediction.gwp4_xp) && !isNaN(prediction.gwp5_xp) && !isNaN(prediction.gwp6_xp) &&
+              !isNaN(prediction.gwp7_xp) && !isNaN(prediction.gwp8_xp) &&
               !isNaN(prediction.total_8gw_xp)) {
-            successCount++;
             return prediction;
           } else {
-            console.warn(`⚠️ Invalid prediction for player ${player.name}:`, prediction);
-            errorCount++;
+            console.warn(`⚠️ Invalid prediction for player ${player.web_name}:`, prediction);
             return null;
           }
         } catch (error) {
           console.warn(`⚠️ Failed to predict player ${player.id} (${player.web_name}):`, error instanceof Error ? error.message : String(error));
-          errorCount++;
           return null;
         }
       });
@@ -989,6 +1194,9 @@ export class FPLPredictor2025_26 {
       const batchResults = await Promise.all(batchPromises);
       const validResults = batchResults.filter(Boolean) as PlayerPrediction[];
       results.push(...validResults);
+      
+      successCount += validResults.length;
+      errorCount += batchResults.length - validResults.length;
 
       // Update progress after each batch
       if (onProgress) {
@@ -996,33 +1204,18 @@ export class FPLPredictor2025_26 {
         onProgress(currentProgress, allPlayers.length);
       }
 
+      // Delay between batches to be respectful to the API
       if (i + batchSize < allPlayers.length) {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
-    console.log(`✅ Predictions completed: ${successCount} successful, ${errorCount} errors`);
-    
-    // Log summary of new player penalties applied
-    const newPlayers = results.filter(p => {
-      const player = allPlayers.find((ap: any) => ap.id === p.player_id);
-      return player && this.classifyPlayer(player, {}).isNewToPL;
-    });
-    
-    const promotedPlayers = results.filter(p => {
-      const player = allPlayers.find((ap: any) => ap.id === p.player_id);
-      return player && this.classifyPlayer(player, {}).isFromPromotedClub;
-    });
-    
-    console.log(`🔧 NEW PLAYER PENALTIES: ${newPlayers.length} players got 40% reduction`);
-    console.log(`🔧 PROMOTED CLUB PENALTIES: ${promotedPlayers.length} players got 30% reduction`);
-    
-    if (newPlayers.length > 0) {
-      console.log(`📊 Sample new player XP (GW2):`, 
-        newPlayers.slice(0, 3).map(p => `${p.name}: ${p.gw2_xp.toFixed(1)}`).join(', ')
-      );
+    if (this.isPredicting) {
+      console.log(`✅ Predictions completed: ${successCount} successful, ${errorCount} errors`);
+    } else {
+      console.log(`🛑 Predictions cancelled: ${successCount} successful, ${errorCount} errors before cancellation`);
     }
-
+    
     return results;
   }
 
@@ -1034,23 +1227,28 @@ export class FPLPredictor2025_26 {
     const promotedTeamIds = [3, 11, 17]; // Burnley, Leeds, Sunderland
     
     // Check if player has no 2024-25 baseline data (new to PL)
-    const has2024_25Data = this.findPlayerBaseline(player.web_name, player);
+    const has2024_25Data = this.findPlayerBaseline(`${player.first_name} ${player.second_name}`, player);
+    
+    // Use baseline data history length if available, otherwise use FPL API history
+    const baselineHistoryLength = has2024_25Data?.season_history?.length || 0;
+    const effectiveHistoryLength = Math.max(historyLength, baselineHistoryLength);
     
     // Player is new to PL if they have no historical data and no baseline data
-    const isNewToPL = !has2024_25Data && historyLength === 0;
+    const isNewToPL = !has2024_25Data && effectiveHistoryLength === 0;
     
     const isFromPromotedClub = promotedTeamIds.includes(player.team);
     
-    const isYoungPlayer = historyLength < 15 && player.now_cost <= 60; // Under £6m with limited data
+    const isYoungPlayer = effectiveHistoryLength < 15 && player.now_cost <= 60; // Under £6m with limited data
     
-    const hasInsufficientData = historyLength < 10 && !has2024_25Data;
+    // Don't classify new players as having insufficient data - they get the new player penalty instead
+    const hasInsufficientData = effectiveHistoryLength < 10 && !has2024_25Data && !isNewToPL;
     
     // Calculate combined penalty multiplier
     let penaltyMultiplier = 1.0;
     let dataQuality: 'excellent' | 'good' | 'limited' | 'minimal' | 'new_player' = 'good';
     
     if (isNewToPL) {
-      penaltyMultiplier *= 0.60; // 40% reduction for Premier League newcomers
+      penaltyMultiplier *= 0.65; // 35% reduction for Premier League newcomers
       dataQuality = 'new_player';
     }
     
@@ -1064,10 +1262,25 @@ export class FPLPredictor2025_26 {
     }
     
     if (hasInsufficientData && !isNewToPL && !isFromPromotedClub) {
-      const dataReduction = historyLength < 3 ? 0.65 : historyLength < 6 ? 0.75 : 0.85;
+      const dataReduction = effectiveHistoryLength < 3 ? 0.65 : effectiveHistoryLength < 6 ? 0.75 : 0.85;
       penaltyMultiplier *= dataReduction;
-      dataQuality = historyLength < 3 ? 'minimal' : 'limited';
+      dataQuality = effectiveHistoryLength < 3 ? 'minimal' : 'limited';
     }
+    
+    // Debug logging for new players (after penalty multiplier calculation)
+    if (player.web_name === 'Elkitike' || player.web_name === 'Salah') {
+      console.log(`🔍 CLASSIFICATION DEBUG - ${player.web_name}:`, {
+        historyLength,
+        has2024_25Data: !!has2024_25Data,
+        baselineHistoryLength,
+        effectiveHistoryLength,
+        isNewToPL,
+        hasInsufficientData,
+        penaltyMultiplier
+      });
+    }
+    
+
     
     return {
       isNewToPL,
@@ -1112,26 +1325,20 @@ export class FPLPredictor2025_26 {
     return adjustedPrediction;
   }
 
-  // NEW: Conservative Caps
+  // NEW: Conservative Caps - REMOVED ALL HARD CAPS
   private applyConservativeCaps(prediction: number, player: any, classification: PlayerClassification, gameweek: number): number {
     let cappedPrediction = prediction;
     
-    // Apply conservative caps based on player classification
+    // Debug logging for new players
     if (classification.isNewToPL) {
-      cappedPrediction = Math.min(cappedPrediction, 5.0); // Max 5 points for PL newcomers
+      console.log(`🔍 CAP DEBUG - ${player.web_name}: Original prediction: ${prediction}, isNewToPL: ${classification.isNewToPL}, hasInsufficientData: ${classification.hasInsufficientData}`);
     }
     
-    if (classification.isFromPromotedClub) {
-      cappedPrediction = Math.min(cappedPrediction, 6.0); // Max 6 points for promoted players
-    }
-    
-    if (classification.hasInsufficientData) {
-      cappedPrediction = Math.min(cappedPrediction, 4.0); // Very conservative for no data
-    }
-    
-    if (classification.isYoungPlayer) {
-      cappedPrediction = Math.min(cappedPrediction, 4.5); // Conservative for young players
-    }
+    // REMOVED ALL HARD CAPS - penalty multipliers are sufficient
+    // New players: 35% penalty (0.65x)
+    // Promoted club: 30% penalty (0.70x) 
+    // Young players: 25% penalty (0.75x)
+    // Insufficient data: various penalties (0.65x to 0.85x)
     
     // Additional caps for later gameweeks (predictions get less reliable)
     if (gameweek >= 6) {
@@ -1139,6 +1346,10 @@ export class FPLPredictor2025_26 {
     }
     if (gameweek >= 8) {
       cappedPrediction *= 0.90; // Further reduction for very distant predictions
+    }
+    
+    if (classification.isNewToPL) {
+      console.log(`🔍 CAP DEBUG - ${player.web_name}: Final prediction (no hard caps): ${cappedPrediction}`);
     }
     
     return cappedPrediction;

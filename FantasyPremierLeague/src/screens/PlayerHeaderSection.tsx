@@ -75,9 +75,7 @@ const PlayerHeaderSection: React.FC<PlayerHeaderSectionProps> = ({
     <View style={styles.playerHeaderSection}>
       <PlayerPhoto 
         playerId={fplPlayer.id}
-        width={80}
-        height={100}
-        showName={false}
+        size={80}
       />
       <View style={styles.playerHeaderDetails}>
         <Text style={[styles.playerName, { color: theme.colors.text }]}>

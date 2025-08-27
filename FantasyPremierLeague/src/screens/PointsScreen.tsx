@@ -87,7 +87,8 @@ const PointsScreen: React.FC = () => {
     if (cachedData && isDataLoaded) {
       // Use cached data
       console.log('📦 Using cached data for Points screen');
-      setFplPlayers(cachedData.fplPlayers);
+      // Use playersModel which has photoUrl, fallback to fplPlayers if not available
+      setFplPlayers(cachedData.playersModel || cachedData.fplPlayers);
       setTeams(cachedData.teams);
       setFixtures(cachedData.fixtures);
       setCurrentGameweek(cachedData.currentGameweek);
@@ -558,9 +559,9 @@ const PointsScreen: React.FC = () => {
                 
                 <PlayerPhoto 
                   playerId={startingXI[0].id}
+                  photoUrl={getPlayerById(startingXI[0].id)?.photoUrl}
                   width={55}
                   height={70}
-                  showName={false}
                 />
                 <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                   {getPlayerById(startingXI[0].id)?.web_name || 'Player'}
@@ -603,9 +604,9 @@ const PointsScreen: React.FC = () => {
                   
                   <PlayerPhoto 
                     playerId={player.id}
+                    photoUrl={getPlayerById(player.id)?.photoUrl}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -652,9 +653,9 @@ const PointsScreen: React.FC = () => {
                   
                   <PlayerPhoto 
                     playerId={player.id}
+                    photoUrl={getPlayerById(player.id)?.photoUrl}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -698,9 +699,9 @@ const PointsScreen: React.FC = () => {
                   
                   <PlayerPhoto 
                     playerId={player.id}
+                    photoUrl={getPlayerById(player.id)?.photoUrl}
                     width={55}
                     height={70}
-                    showName={false}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {getPlayerById(player.id)?.web_name || 'Player'}
@@ -749,9 +750,9 @@ const PointsScreen: React.FC = () => {
                 
                 <PlayerPhoto 
                   playerId={player.id}
+                  photoUrl={getPlayerById(player.id)?.photoUrl}
                   width={55}
                   height={70}
-                  showName={false}
                 />
                 <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                   {getPlayerById(player.id)?.web_name || 'Player'}
