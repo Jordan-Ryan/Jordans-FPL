@@ -370,13 +370,8 @@ const SquadScreen: React.FC = () => {
 
   // Show squad loading state if we don't have squad data yet
   if (!squadDataFetched || startingXI.length === 0) {
-    console.log('🔍 Debug - Loading state:', {
-      squadDataFetched,
-      squadLoading,
-      startingXILength: startingXI.length,
-      playersLength: players.length,
-      fplPlayersLength: cachedData.fplPlayers?.length
-    });
+
+
     
     return (
       <View style={styles.container}>

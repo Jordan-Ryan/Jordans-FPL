@@ -16,7 +16,7 @@ export const fplApiService = {
       const dirInfo = await FileSystem.getInfoAsync(this.photoStorageDir);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.photoStorageDir, { intermediates: true });
-        console.log('📁 Created photo storage directory');
+        // console.log('📁 Created photo storage directory');
       }
       
       // Store ghost image in local storage for players without photos
@@ -35,7 +35,7 @@ export const fplApiService = {
       // Check if ghost image already exists
       const fileInfo = await FileSystem.getInfoAsync(ghostFilePath);
       if (fileInfo.exists) {
-        console.log('👻 Ghost image already exists in local storage');
+        // console.log('👻 Ghost image already exists in local storage');
         return ghostFilePath;
       }
       
@@ -47,7 +47,7 @@ export const fplApiService = {
         encoding: FileSystem.EncodingType.Base64
       });
       
-      console.log('👻 Ghost image stored in local storage:', ghostFilePath);
+      // console.log('👻 Ghost image stored in local storage:', ghostFilePath);
       return ghostFilePath;
     } catch (error) {
       console.error('❌ Error storing ghost image:', error);
@@ -83,21 +83,21 @@ export const fplApiService = {
       // Check if already downloaded
       const fileInfo = await FileSystem.getInfoAsync(filePath);
       if (fileInfo.exists) {
-        console.log(`🖼️ Photo already exists for player ${playerId}`);
+        // console.log(`🖼️ Photo already exists for player ${playerId}`);
         return filePath;
       }
       
       // Use FPL photo code if available, otherwise fallback to player ID
       const photoUrl = photoCode ? this.getPlayerPhotoUrl(photoCode) : this.getPlayerPhotoUrlById(playerId);
-      console.log(`📥 Downloading photo for player ${playerId}: ${photoUrl}`);
+      // console.log(`📥 Downloading photo for player ${playerId}: ${photoUrl}`);
       
       const downloadResult = await FileSystem.downloadAsync(photoUrl, filePath);
       
       if (downloadResult.status === 200) {
-        console.log(`✅ Photo downloaded for player ${playerId}: ${filePath}`);
+        // console.log(`✅ Photo downloaded for player ${playerId}: ${filePath}`);
         return filePath;
       } else {
-        console.log(`❌ Failed to download photo for player ${playerId}: ${downloadResult.status}`);
+        // console.log(`❌ Failed to download photo for player ${playerId}: ${downloadResult.status}`);
         return null;
       }
     } catch (error) {
@@ -110,7 +110,7 @@ export const fplApiService = {
   async batchDownloadPhotos(players: FPLPlayer[], batchSize: number = 50): Promise<Map<number, string>> {
     const photoMap = new Map<number, string>();
     
-    console.log(`🖼️ Starting batch photo download for ${players.length} players (batch size: ${batchSize})`);
+    // console.log(`🖼️ Starting batch photo download for ${players.length} players (batch size: ${batchSize})`);
     
     // Initialize storage directory
     await this.initPhotoStorage();
@@ -131,7 +131,7 @@ export const fplApiService = {
       }
     }
     
-    console.log(`🖼️ Found ${existingPhotos.size} existing photos, need to download ${players.length - existingPhotos.size}`);
+    // console.log(`🖼️ Found ${existingPhotos.size} existing photos, need to download ${players.length - existingPhotos.size}`);
     
     // Process in batches
     for (let i = 0; i < players.length; i += batchSize) {
@@ -139,7 +139,7 @@ export const fplApiService = {
       const batchNum = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(players.length / batchSize);
       
-      console.log(`🖼️ Processing batch ${batchNum}/${totalBatches} (${batch.length} players)`);
+      // console.log(`🖼️ Processing batch ${batchNum}/${totalBatches} (${batch.length} players)`);
       
       // Process batch concurrently with small delay
       const batchPromises = batch.map(async (player) => {
@@ -161,7 +161,7 @@ export const fplApiService = {
       }
     }
     
-    console.log(`✅ Batch photo download completed. Stored ${photoMap.size} photos locally.`);
+    // console.log(`✅ Batch photo download completed. Stored ${photoMap.size} photos locally.`);
     return photoMap;
   },
 
@@ -204,7 +204,7 @@ export const fplApiService = {
       const dirInfo = await FileSystem.getInfoAsync(this.photoStorageDir);
       if (dirInfo.exists) {
         await FileSystem.deleteAsync(this.photoStorageDir, { idempotent: true });
-        console.log('🗑️ Cleared photo cache');
+        // console.log('🗑️ Cleared photo cache');
       }
     } catch (error) {
       console.error('❌ Error clearing photo cache:', error);
@@ -214,32 +214,31 @@ export const fplApiService = {
   // Fetch bootstrap data (teams, players, events, etc.)
   fetchBootstrapData: async (): Promise<FPLBootstrapData> => {
     try {
-      const response = await fetch(`${fplApiService.baseUrl}/bootstrap-static/`);
+      console.log('🌐 Fetching bootstrap data from FPL API...');
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const response = await fetch(`${fplApiService.baseUrl}/bootstrap-static/`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
       
-      // Debug: log the structure of the response
-      console.log('🔍 FPL API Bootstrap response structure:');
-      console.log('  - Keys:', Object.keys(data));
-      console.log('  - Elements count:', data.elements?.length || 0);
-      console.log('  - Teams count:', data.teams?.length || 0);
-      
-      if (data.elements && data.elements.length > 0) {
-        const firstPlayer = data.elements[0];
-        console.log('  - First player keys:', Object.keys(firstPlayer));
-        console.log('  - First player photo:', firstPlayer.photo);
-        console.log('  - First player sample:', {
-          id: firstPlayer.id,
-          web_name: firstPlayer.web_name,
-          photo: firstPlayer.photo,
-          element_type: firstPlayer.element_type
-        });
-      }
+      console.log('✅ Bootstrap data fetched successfully');
       
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('❌ Bootstrap data fetch timed out after 30 seconds');
+        throw new Error('Request timed out - FPL API may be slow or unavailable');
+      }
       console.error('Error fetching FPL bootstrap data:', error);
       throw error;
     }
@@ -351,21 +350,32 @@ export const fplApiService = {
   // Fetch fixtures from FPL API
   fetchFixturesData: async (): Promise<any[]> => {
     try {
-      const response = await fetch(`${fplApiService.baseUrl}/fixtures/`);
+      console.log('🌐 Fetching fixtures data from FPL API...');
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+      
+      const response = await fetch(`${fplApiService.baseUrl}/fixtures/`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
       
-      // Debug: log the structure of the first fixture
-      if (data && data.length > 0) {
-        console.log('FPL API Fixture structure:', data[0]);
-        console.log('Total fixtures from API:', data.length);
-      }
+      console.log('✅ Fixtures data fetched successfully');
       
       return data || [];
-    } catch (error) {
-      console.error('Error fetching FPL fixtures:', error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('❌ Fixtures data fetch timed out after 20 seconds');
+      } else {
+        console.error('Error fetching FPL fixtures:', error);
+      }
       return [];
     }
   },
@@ -376,21 +386,19 @@ export const fplApiService = {
       const fixturesData = await fplApiService.fetchFixturesData();
       const teams = await fplApiService.fetchAllTeams();
       
-      console.log(`Looking for fixtures in gameweek ${gameweek}`);
-      console.log('Available fixtures:', fixturesData.map(f => ({ id: f.id, event: f.event, home: f.team_h, away: f.team_a })));
-      console.log('Available teams:', teams.map(t => ({ id: t.id, name: t.name, short_name: t.short_name })));
+      // Quiet: removed verbose gameweek/fixtures/teams logs
       
       // Filter fixtures for the specific gameweek
       const gameweekFixtures = fixturesData.filter(fixture => fixture.event === gameweek);
       
-      console.log(`Found ${gameweekFixtures.length} fixtures for gameweek ${gameweek}`);
+      // Quiet
       
       // Convert to our Fixture interface
       const convertedFixtures: Fixture[] = gameweekFixtures.map(fixture => {
         const homeTeam = teams.find(team => team.id === fixture.team_h);
         const awayTeam = teams.find(team => team.id === fixture.team_a);
         
-        console.log(`Converting fixture ${fixture.id}: ${homeTeam?.name} vs ${awayTeam?.name}`);
+        // Quiet
         
         // Determine difficulty based on team strength (you can adjust this logic)
         let difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium';
@@ -428,7 +436,7 @@ export const fplApiService = {
         };
       });
       
-      console.log('Converted fixtures:', convertedFixtures);
+      // Quiet
       return convertedFixtures;
     } catch (error) {
       console.error('Error getting fixtures for gameweek:', error);
@@ -569,17 +577,13 @@ export const fplApiService = {
       const bootstrapData = await fplApiService.fetchBootstrapData();
       const events = bootstrapData.events || [];
       
-      // Debug: log the events structure
-      console.log('FPL Events data:', events);
-      if (events.length > 0) {
-        console.log('First event structure:', events[0]);
-      }
+      // Quiet: remove events structure logs
       
       // Find the current event (gameweek)
       const currentEvent = events.find(event => event.is_current === true);
       
       if (currentEvent) {
-        console.log('Current event found:', currentEvent);
+        // Quiet
         return {
           id: currentEvent.id,
           name: currentEvent.name || `Gameweek ${currentEvent.id}`,
@@ -590,7 +594,7 @@ export const fplApiService = {
       // Fallback: if no current event found, return the latest event
       if (events.length > 0) {
         const latestEvent = events[events.length - 1];
-        console.log('Using latest event as fallback:', latestEvent);
+        // Quiet
         return {
           id: latestEvent.id,
           name: latestEvent.name || `Gameweek ${latestEvent.id}`,
@@ -662,17 +666,7 @@ export const fplApiService = {
       }
       const data = await response.json();
       
-      // Debug: log the structure of player history
-      if (data && data.history) {
-        console.log('Player history structure:', data.history[0]);
-        console.log('Total history entries:', data.history.length);
-      }
-      
-      // Debug: log the structure of history_past (previous seasons)
-      if (data && data.history_past) {
-        console.log('Player history_past structure:', data.history_past[0]);
-        console.log('Total history_past entries:', data.history_past.length);
-      }
+      // Quiet: remove player history logs
       
       return data.history || [];
     } catch (error) {
@@ -690,11 +684,7 @@ export const fplApiService = {
       }
       const data = await response.json();
       
-      // Debug: log the structure of player fixtures
-      if (data && data.fixtures) {
-        console.log('Player fixtures structure:', data.fixtures[0]);
-        console.log('Total fixtures entries:', data.fixtures.length);
-      }
+      // Quiet: remove player fixtures logs
       
       return data.fixtures || [];
     } catch (error) {
@@ -712,11 +702,7 @@ export const fplApiService = {
       }
       const data = await response.json();
       
-      // Debug: log the structure of season history
-      if (data && data.history_past) {
-        console.log('Player season history structure:', data.history_past[0]);
-        console.log('Total season history entries:', data.history_past.length);
-      }
+      // Quiet: remove season history logs
       
       return data.history_past || [];
     } catch (error) {
@@ -733,14 +719,14 @@ export const fplApiService = {
     valueRank: string;
   }> => {
     try {
-      console.log('Getting rankings for player ID:', playerId);
+      // Quiet
       
       // Get all players and the specific player
       const allPlayers = await fplApiService.fetchAllPlayers();
-      console.log('Total players fetched:', allPlayers.length);
+      // Quiet
       
       const player = allPlayers.find(p => p.id === playerId);
-      console.log('Player found:', player ? player.web_name : 'Not found');
+      // Quiet
       
       if (!player) {
         throw new Error('Player not found');
@@ -748,7 +734,7 @@ export const fplApiService = {
 
       // Filter players by the same position (element_type)
       const samePositionPlayers = allPlayers.filter(p => p.element_type === player.element_type);
-      console.log('Players in same position:', samePositionPlayers.length, 'Position type:', player.element_type);
+      // Quiet
       
       // Calculate rankings
       const pointsRank = fplApiService.calculateRank(
@@ -757,7 +743,7 @@ export const fplApiService = {
         'total_points', 
         'desc'
       );
-      console.log('Points rank calculated:', pointsRank);
+      // Quiet
       
       const formRank = fplApiService.calculateRank(
         samePositionPlayers, 
@@ -765,7 +751,7 @@ export const fplApiService = {
         'form', 
         'desc'
       );
-      console.log('Form rank calculated:', formRank);
+      // Quiet
       
       const ownershipRank = fplApiService.calculateRank(
         samePositionPlayers, 
@@ -773,7 +759,7 @@ export const fplApiService = {
         'selected_by_percent', 
         'desc'
       );
-      console.log('Ownership rank calculated:', ownershipRank);
+      // Quiet
       
       const valueRank = fplApiService.calculateRank(
         samePositionPlayers, 
@@ -781,7 +767,7 @@ export const fplApiService = {
         'value_form', 
         'desc'
       );
-      console.log('Value rank calculated:', valueRank);
+      // Quiet
 
       const result = {
         pointsRank: `${pointsRank}/${samePositionPlayers.length}`,
@@ -790,7 +776,7 @@ export const fplApiService = {
         valueRank: `${valueRank}/${samePositionPlayers.length}`,
       };
       
-      console.log('Final rankings result:', result);
+      // Quiet
       return result;
     } catch (error) {
       console.error('Error calculating player rankings:', error);

@@ -49,37 +49,7 @@ const LoadingScreen: React.FC = () => {
         updateProgress(step, description, percentage);
       });
       
-      console.log('🔍 Data received from comprehensive service:');
-      console.log('  - Players count:', data.players.length);
-      console.log('  - Sample player (first):', data.players[0] ? {
-        name: data.players[0].web_name,
-        gwp1_xp: data.players[0].gwp1_xp,
-        total_3gw_xp: data.players[0].total_3gw_xp
-      } : 'No players');
-      
-      // Check specific players for XP values
-      const salah = data.players.find(p => p.web_name === 'M.Salah');
-      const raya = data.players.find(p => p.web_name === 'Raya');
-      
-      if (salah) {
-        console.log('🔍 Salah XP data:', {
-          gwp1_xp: salah.gwp1_xp,
-          gwp2_xp: salah.gwp2_xp,
-          gwp3_xp: salah.gwp3_xp,
-          total_3gw_xp: salah.total_3gw_xp
-        });
-      }
-      
-      if (raya) {
-        console.log('🔍 Raya XP data:', {
-          gwp1_xp: raya.gwp1_xp,
-          gwp2_xp: raya.gwp2_xp,
-          gwp3_xp: raya.gwp3_xp,
-          total_3gw_xp: raya.total_3gw_xp
-        });
-      }
-      
-      console.log('🔍 Setting cached data...');
+      // Reduce noisy logs during loading
       setCachedData({
         // Map to the existing DataContext structure
         fplPlayers: data.players,
@@ -104,42 +74,19 @@ const LoadingScreen: React.FC = () => {
         timestamp: data.timestamp
       });
       
-      console.log('🔍 Cached data verification:');
-      const cachedPlayer = data.players.find((p: any) => p.web_name === 'M.Salah');
-      if (cachedPlayer) {
-        console.log('🔍 Salah in data to be cached:', {
-          gwp1_xp: cachedPlayer.gwp1_xp,
-          gwp2_xp: cachedPlayer.gwp2_xp,
-          gwp3_xp: cachedPlayer.gwp3_xp,
-          total_3gw_xp: cachedPlayer.total_3gw_xp
-        });
-      }
-      
-      const cachedRaya = data.players.find((p: any) => p.web_name === 'Raya');
-      if (cachedRaya) {
-        console.log('🔍 Raya in data to be cached:', {
-          gwp1_xp: cachedRaya.gwp1_xp,
-          gwp2_xp: cachedRaya.gwp2_xp,
-          gwp3_xp: cachedRaya.gwp3_xp,
-          total_3gw_xp: cachedRaya.total_3gw_xp
-        });
-      }
-      
-      console.log('✅ Data caching complete!');
-      
-      // Debug: Check what's in the cache after setting
-      console.log('🔍 Cache set complete. Checking preRenderedPlayersTable...');
-      console.log('🔍 preRenderedPlayersTable length:', data.players.length);
-      if (data.players && data.players.length > 0) {
-        const cachedPlayer = data.players[0];
-        console.log('🔍 First cached player:', {
-          id: cachedPlayer.id,
-          name: cachedPlayer.web_name,
-          next3Fixtures: cachedPlayer.next3Fixtures,
-          hasNext3Fixtures: !!cachedPlayer.next3Fixtures,
-          next3FixturesLength: cachedPlayer.next3Fixtures?.length || 0
-        });
-      }
+      // Targeted log for Ekitiké only
+      try {
+        const ek = data.players.find((p: any) => p.id === 661 || p.web_name === 'Ekitiké' || p.web_name === 'Ekitike');
+        if (ek) {
+          console.log('🔎 Ekitiké cache snapshot:', {
+            id: ek.id,
+            web_name: ek.web_name,
+            baselineHistoryLength: ek.baselineHistoryLength,
+            effectiveHistoryLength: (ek as any).effectiveHistoryLength,
+            baselineDataSample: (ek as any).baselineDataSample ? ((ek as any).baselineDataSample.slice ? (ek as any).baselineDataSample.slice(0, 2) : (ek as any).baselineDataSample) : undefined,
+          });
+        }
+      } catch {}
       
       updateProgress(9, 'Complete!', 100);
       

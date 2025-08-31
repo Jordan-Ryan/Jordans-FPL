@@ -19,7 +19,7 @@ import { FPLPlayer, FPLTeam } from '../types';
 
 const Best11Screen: React.FC = () => {
   const theme = useTheme();
-  const { cachedData, isDataLoaded } = useData();
+  const { cachedData, isDataLoaded, forceRefresh } = useData();
   const { width } = Dimensions.get('window');
   
   const [currentGameweek, setCurrentGameweek] = useState(() => {
@@ -38,13 +38,8 @@ const Best11Screen: React.FC = () => {
 
 
   useEffect(() => {
-    console.log('🔍 Best11Screen: useEffect triggered', {
-      hasCachedData: !!cachedData,
-      hasBest11Teams: !!cachedData?.best11Teams,
-      hasPreRenderedBest11: !!cachedData?.preRenderedBest11Data,
-      best11TeamsKeys: cachedData?.best11Teams ? Object.keys(cachedData.best11Teams) : [],
-      currentGameweek
-    });
+
+
     
     if (cachedData) {
       // Use pre-rendered data if available for instant display
@@ -88,7 +83,7 @@ const Best11Screen: React.FC = () => {
     if (displayTeam) {
       // Check if starting XI is sorted by expected points
       if (displayTeam.starting_xi && displayTeam.starting_xi.length > 0) {
-        const xpField = `gw${currentGameweek}_xp` as keyof typeof displayTeam.starting_xi[0];
+        const xpField = `gwp${currentGameweek}_xp` as keyof typeof displayTeam.starting_xi[0];
         const isSorted = displayTeam.starting_xi.every((player: any, index: number) => {
           if (index === 0) return true;
           const currentXP = player[xpField] as number;
@@ -220,6 +215,15 @@ const Best11Screen: React.FC = () => {
             <Text style={styles.headerTitle}>
               Best 11 - Gameweek {currentGameweek}
             </Text>
+            <TouchableOpacity 
+              style={styles.refreshButton}
+              onPress={() => {
+                console.log('🔄 Refreshing Best 11 data...');
+                forceRefresh();
+              }}
+            >
+              <Text style={styles.refreshButtonText}>🔄 Refresh</Text>
+            </TouchableOpacity>
             <View style={styles.teamInfo}>
               <Text style={styles.formationText}>
                 Formation: {displayTeam.formation}
@@ -229,12 +233,12 @@ const Best11Screen: React.FC = () => {
               </Text>
               <Text style={styles.pointsText}>
                 Starting XI Expected Points: {displayTeam.starting_xi.reduce((total: number, player: any) => 
-                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                  total + (player[`gwp${currentGameweek}_xp` as keyof typeof player] || 0), 0
                 ).toFixed(1)}
               </Text>
               <Text style={styles.pointsText}>
                 Bench Expected Points: {displayTeam.bench.reduce((total: number, player: any) => 
-                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                  total + (player[`gwp${currentGameweek}_xp` as keyof typeof player] || 0), 0
                 ).toFixed(1)}
               </Text>
             </View>
@@ -317,7 +321,7 @@ const Best11Screen: React.FC = () => {
                   </Text>
                   
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
+                    {player[`gwp${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -347,14 +351,15 @@ const Best11Screen: React.FC = () => {
                   
                   <PlayerPhoto 
                     playerId={player.player_id}
-                    size={55}
+                    width={55}
+                    height={70}
                   />
                   <Text style={styles.playerName} numberOfLines={1} ellipsizeMode="tail">
                     {player.name}
                   </Text>
                   
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
+                    {player[`gwp${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -392,7 +397,7 @@ const Best11Screen: React.FC = () => {
                   </Text>
                   
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
+                    {player[`gwp${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -429,7 +434,7 @@ const Best11Screen: React.FC = () => {
                   </Text>
                   
                   <Text style={styles.playerFixture} numberOfLines={1} ellipsizeMode="tail">
-                    {player[`gw${currentGameweek}_xp` as keyof typeof player]} XP
+                    {player[`gwp${currentGameweek}_xp` as keyof typeof player]} XP
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -486,7 +491,7 @@ const Best11Screen: React.FC = () => {
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>
                 {displayTeam.starting_xi.reduce((total: number, player: any) => 
-                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                  total + (player[`gwp${currentGameweek}_xp` as keyof typeof player] || 0), 0
                 ).toFixed(1)}
               </Text>
               <Text style={styles.statLabel}>Starting XI XP</Text>
@@ -494,7 +499,7 @@ const Best11Screen: React.FC = () => {
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>
                 {displayTeam.bench.reduce((total: number, player: any) => 
-                  total + (player[`gw${currentGameweek}_xp` as keyof typeof player] || 0), 0
+                  total + (player[`gwp${currentGameweek}_xp` as keyof typeof player] || 0), 0
                 ).toFixed(1)}
               </Text>
               <Text style={styles.statLabel}>Bench XP</Text>

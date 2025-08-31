@@ -9,11 +9,16 @@ import {
   Modal,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { FPLPlayer, FPLTeam } from '../types';
 import { fplApiService } from '../services/fplApi';
 import PlayerFixturesSection from '../screens/PlayerFixturesSection';
 import PlayerHeaderSection from '../screens/PlayerHeaderSection';
 import { FPLPointsCalculator, FPLMatchStats } from '../utils/fplPointsCalculator';
+// Lightweight baseline access for rolling calculations in XP tab
+// Same dataset used by the predictor
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const baselineData2024_25 = require('../data/2024-25-baseline-processed.json');
 
 interface PlayerStatsSectionProps {
   fplPlayer: FPLPlayer;
@@ -21,6 +26,7 @@ interface PlayerStatsSectionProps {
 
 const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) => {
   const theme = useTheme();
+  const { cachedData } = useData();
   const [activeTab, setActiveTab] = useState<'matches' | 'stats' | 'history' | 'xp'>('matches');
   const [matchesSubTab, setMatchesSubTab] = useState<'results' | 'fixtures'>('results');
   const [teams, setTeams] = useState<FPLTeam[]>([]);
@@ -35,6 +41,7 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
     ownershipRank: string;
     valueRank: string;
   } | null>(null);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,6 +69,117 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
 
     fetchData();
   }, [fplPlayer.id]);
+
+  // Debug logging when XP tab is opened
+  useEffect(() => {
+    if (activeTab !== 'xp') return;
+    console.log('🔎 XP DEBUG: tab_open', {
+      playerId: (fplPlayer as any).id,
+      web_name: (fplPlayer as any).web_name,
+      hasCachedData: !!cachedData,
+      playerHistoryLen: playerHistory?.length || 0
+    });
+
+    try {
+      // Global zero-baseline snapshot: total and excluding promoted (heuristic)
+      try {
+        const allPlayers: any[] = cachedData?.fplPlayers || [];
+        const byTeam: Record<number, { total: number; withBaseline: number }> = {} as any;
+        (cachedData?.players || []).forEach((p: any) => {
+          const teamId = p.team;
+          if (!byTeam[teamId]) byTeam[teamId] = { total: 0, withBaseline: 0 };
+          byTeam[teamId].total += 1;
+          if ((p.baselineHistoryLength || 0) > 0) byTeam[teamId].withBaseline += 1;
+        });
+        const promoted = new Set<number>();
+        Object.entries(byTeam).forEach(([tid, s]) => {
+          const t = Number(tid);
+          const cov = s.total ? s.withBaseline / s.total : 0;
+          if (s.total >= 15 && s.withBaseline <= 3 && cov <= 0.15) promoted.add(t);
+        });
+        const zeroAll = (cachedData?.players || []).filter((p: any) => (p.baselineHistoryLength || 0) === 0).length;
+        const zeroExProm = (cachedData?.players || []).filter((p: any) => (p.baselineHistoryLength || 0) === 0 && !promoted.has(p.team)).length;
+        console.log('🔎 ZERO-BASELINE SNAPSHOT:', { totalZero: zeroAll, excludingPromoted: zeroExProm, promotedTeams: Array.from(promoted.values()) });
+      } catch {}
+
+      const apiPlayer = (cachedData?.fplPlayers || []).find((p: any) => p.id === (fplPlayer as any).id);
+      const firstName = apiPlayer?.first_name || (fplPlayer as any).first_name || '';
+      const secondName = apiPlayer?.second_name || (fplPlayer as any).second_name || '';
+      const key1 = `${firstName}_${secondName}`;
+      const key2 = `${secondName}_${firstName}`;
+      const normalize = (s: string) => s
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9_\s]/g, '');
+      const normalizedWeb = normalize((fplPlayer as any).web_name || apiPlayer?.web_name || '');
+      const normalizedWebUnderscore = normalizedWeb.replace(/\s+/g, '_');
+
+      const baselinePlayers: Record<string, any> | undefined = baselineData2024_25?.players;
+      let matchedKey: string | null = null;
+      let baselineHistory: any[] = [];
+      if (baselinePlayers) {
+        if (baselinePlayers[key1]) { matchedKey = key1; baselineHistory = baselinePlayers[key1]?.season_history || []; }
+        else if (baselinePlayers[key2]) { matchedKey = key2; baselineHistory = baselinePlayers[key2]?.season_history || []; }
+        else {
+          const allKeys = Object.keys(baselinePlayers);
+          const firstN = normalize(firstName);
+          const secondN = normalize(secondName);
+          const firstTokens = firstN.split(/\s+/).filter(Boolean);
+          const lastFirstToken = firstTokens.length ? firstTokens[firstTokens.length - 1] : firstN;
+          const byBoth = allKeys.find(k => {
+            const kn = normalize(k);
+            return kn.includes(secondN) && (kn.includes(firstN) || kn.includes(lastFirstToken));
+          });
+          if (byBoth) { matchedKey = byBoth; baselineHistory = baselinePlayers[byBoth]?.season_history || []; }
+          else {
+            const byWeb = allKeys.find(k => {
+              const kn = normalize(k);
+              return kn.includes(normalizedWeb) || kn.includes(normalizedWebUnderscore);
+            });
+            if (byWeb) { matchedKey = byWeb; baselineHistory = baselinePlayers[byWeb]?.season_history || []; }
+            else {
+              // Extra accent-insensitive fallback: try stripping all diacritics from provided names again and compare tokens
+              const tokens = [firstN, secondN, lastFirstToken].filter(Boolean);
+              const best = allKeys.find(k => {
+                const kn = normalize(k);
+                return tokens.every(tok => kn.includes(tok));
+              });
+              if (best) { matchedKey = best; baselineHistory = baselinePlayers[best]?.season_history || []; }
+            }
+          }
+        }
+      }
+
+      // Get player classification and baseline data from predictor (use same logic as prediction)
+      const { FPLPredictor2025_26 } = require('../services/fplPredictor2025-26');
+      const predictor = new FPLPredictor2025_26();
+      const predictorBaselineData = predictor.findPlayerBaseline('', fplPlayer);
+      const predictorBaselineHistory = predictorBaselineData?.season_history || [];
+
+      const last5Baseline = (predictorBaselineHistory || []).slice(-5).map((g: any) => g.minutes ?? 0);
+      const last5Current = (playerHistory || []).slice(-5).map((g: any) => g.minutes ?? 0);
+      const combined = [
+        ...(predictorBaselineHistory || []),
+        ...(playerHistory || [])
+      ];
+      combined.sort((a: any, b: any) => (a.round || 0) - (b.round || 0));
+      const last5Combined = combined.slice(-5).map((g: any) => ({ gw: g.round, mins: g.minutes, pts: g.total_points }));
+
+      const p: any = fplPlayer as any;
+      const gw1 = Number(p.gwp1_xp ?? 0);
+      const gw2 = Number(p.gwp2_xp ?? 0);
+      const gw3 = Number(p.gwp3_xp ?? 0);
+      const fixtures = Array.isArray(p.fixtures) ? p.fixtures.slice(0, 3) : [];
+
+      // Get player classification using predictor's baseline data
+      const classification = predictor.classifyPlayer(p, {}, predictorBaselineData);
+
+      // Debug logging for Ekitike only (moved to main render function to avoid scope issues)
+    } catch (err) {
+      console.warn('XP DEBUG error:', err);
+    }
+  }, [activeTab, cachedData, fplPlayer, playerHistory]);
 
   const handleMatchDetails = (match: any) => {
     setSelectedMatch(match);
@@ -226,9 +344,78 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
     const gw1 = Number(p.gwp1_xp ?? 0);
     const gw2 = Number(p.gwp2_xp ?? 0);
     const gw3 = Number(p.gwp3_xp ?? 0);
+    
+
     const total3 = Number(p.total_3gw_xp ?? (gw1 + gw2 + gw3));
     const total8 = typeof p.total_8gw_xp === 'number' ? Number(p.total_8gw_xp) : null;
-    const baselineGwCount = p.baselineHistoryLength ?? p.effectiveHistoryLength ?? 0;
+    
+    // Calculate points before penalty for display
+    const gw1BeforePenalty = penaltyMultiplier !== 1.0 ? gw1 / penaltyMultiplier : gw1;
+    const gw2BeforePenalty = penaltyMultiplier !== 1.0 ? gw2 / penaltyMultiplier : gw2;
+    const gw3BeforePenalty = penaltyMultiplier !== 1.0 ? gw3 / penaltyMultiplier : gw3;
+    // Strict baseline length (ignore any prefilled predictor field)
+    const strictBaselineLen = (() => {
+      try {
+        const baselinePlayers: Record<string, any> | undefined = baselineData2024_25?.players;
+        if (!baselinePlayers) return 0;
+        const apiPlayer = cachedData?.fplPlayers?.find((pp: any) => pp.id === (fplPlayer as any).id);
+        const firstName = apiPlayer?.first_name || (fplPlayer as any).first_name || '';
+        const secondName = apiPlayer?.second_name || (fplPlayer as any).second_name || '';
+        const key1 = `${firstName}_${secondName}`;
+        const key2 = `${secondName}_${firstName}`;
+        if (baselinePlayers[key1]) return (baselinePlayers[key1]?.season_history || []).length;
+        if (baselinePlayers[key2]) return (baselinePlayers[key2]?.season_history || []).length;
+        const webUnderscore = String((fplPlayer as any).web_name || '').replace(/\s+/g, '_');
+        if (baselinePlayers[webUnderscore]) return (baselinePlayers[webUnderscore]?.season_history || []).length;
+        const normalize = (s: string) => String(s || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9_\s]/g, '');
+        const allKeys = Object.keys(baselinePlayers);
+        const exactNormKey = allKeys.find(k => normalize(k) === normalize(webUnderscore));
+        if (exactNormKey) return (baselinePlayers[exactNormKey]?.season_history || []).length;
+        const byId = Object.values(baselinePlayers).find((v: any) => v && Number(v.fpl_id) === Number((fplPlayer as any).id));
+        if (byId) return ((byId as any).season_history || []).length;
+        return 0;
+      } catch {
+        return 0;
+      }
+    })();
+    // Get fresh baseline data from predictor
+    let baselineGwCount = 0;
+    let penaltyMultiplier = 1.0;
+    
+    try {
+      const { FPLPredictor2025_26 } = require('../services/fplPredictor2025-26');
+      const predictor = new FPLPredictor2025_26();
+      
+      if (predictor.isInitialized()) {
+        const predictorBaselineData = predictor.findPlayerBaseline('', fplPlayer);
+        const predictorBaselineHistory = predictorBaselineData?.season_history || [];
+        baselineGwCount = predictorBaselineHistory?.length || 0;
+        
+        // Get classification for penalty multiplier
+        const classification = predictor.classifyPlayer(p, {}, predictorBaselineData);
+        penaltyMultiplier = classification.penaltyMultiplier;
+      } else {
+        console.warn('Predictor not initialized, using fallback values');
+      }
+    } catch (error) {
+      console.warn('Error getting predictor data:', error);
+    }
+    
+    // Debug logging for Ekitike only (in main render function where variables are in scope)
+    if ((fplPlayer as any).web_name && (fplPlayer as any).web_name.includes('Ekit')) {
+      console.log('🔍 EKITIKE XP DEBUG (main render):', {
+        player: { id: (fplPlayer as any).id, web_name: (fplPlayer as any).web_name },
+        baselineGwCount,
+        penaltyMultiplier,
+        gw1BeforePenalty,
+        gw2BeforePenalty,
+        gw3BeforePenalty
+      });
+    }
     const currentSeasonMinutes = Array.isArray(playerHistory)
       ? playerHistory.reduce((sum, m) => sum + (Number(m.minutes) || 0), 0)
       : 0;
@@ -271,12 +458,112 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
     })();
 
     const computeRolling = () => {
-      const hist = Array.isArray(playerHistory) ? [...playerHistory] : [];
+      // Combine baseline + current season history (matches predictor logic)
+      const baselinePlayers: Record<string, any> | undefined = baselineData2024_25?.players;
+      let baselineHistory: any[] = [];
+      if (baselinePlayers) {
+        const apiPlayer = cachedData?.fplPlayers?.find((p: any) => p.id === (fplPlayer as any).id);
+        const firstName = apiPlayer?.first_name || (fplPlayer as any).first_name || '';
+        const secondName = apiPlayer?.second_name || (fplPlayer as any).second_name || '';
+
+        const key1 = `${firstName}_${secondName}`;
+        const key2 = `${secondName}_${firstName}`;
+        // 1) Exact key
+        if (baselinePlayers[key1]) {
+          baselineHistory = baselinePlayers[key1]?.season_history || [];
+        } else if (baselinePlayers[key2]) {
+          baselineHistory = baselinePlayers[key2]?.season_history || [];
+        } else {
+          // 2) Normalized (remove accents/punctuation) search containing both names
+          const normalize = (s: string) => s
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9_\s]/g, '');
+          const firstN = normalize(firstName);
+          const secondN = normalize(secondName);
+          const allKeys = Object.keys(baselinePlayers);
+          const matchKey = allKeys.find(k => {
+            const kn = normalize(k);
+            return kn.includes(firstN) && kn.includes(secondN);
+          });
+          if (matchKey) {
+            baselineHistory = baselinePlayers[matchKey]?.season_history || [];
+          } else {
+            // 3) Fallback to web_name only
+            const web = normalize((fplPlayer as any).web_name || apiPlayer?.web_name || '');
+            const byWeb = allKeys.find(k => normalize(k).includes(web));
+            if (byWeb) {
+              baselineHistory = baselinePlayers[byWeb]?.season_history || [];
+            } else {
+              // 4) Final fallback: match by fpl_id in value
+              try {
+                const byId = Object.values(baselinePlayers).find((v: any) => v && Number(v.fpl_id) === Number((fplPlayer as any).id));
+                if (byId) {
+                  baselineHistory = (byId as any).season_history || [];
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+
+      const hist = [
+        ...(Array.isArray(baselineHistory) ? baselineHistory : []),
+        ...(Array.isArray(playerHistory) ? playerHistory : []),
+      ];
       hist.sort((a, b) => (a.round || 0) - (b.round || 0));
+      
+      // Debug logging for Ekitike
+      if ((fplPlayer as any).web_name?.includes('Ekit')) {
+        console.log(`🔍 EKITIKE DATA DEBUG:`, {
+          playerName: (fplPlayer as any).web_name,
+          baselineHistoryLength: baselineHistory?.length || 0,
+          playerHistoryLength: playerHistory?.length || 0,
+          combinedHistLength: hist.length,
+          playerHistory: playerHistory?.map(g => ({ gw: g.round, pts: g.total_points, mins: g.minutes })),
+          baselineHistory: baselineHistory?.slice(0, 3).map(g => ({ gw: g.round, pts: g.total_points, mins: g.minutes }))
+        });
+      }
+      
       const lastNAvg = (n: number, key: string) => {
         if (hist.length === 0) return 0;
-        const slice = hist.slice(-n);
+        
+        // Prioritize current season data over baseline data
+        // Current season games have lower round numbers (1, 2, 3...)
+        // Baseline games have higher round numbers (5, 6, 7... 38)
+        const currentSeasonGames = hist.filter((g: any) => (g.round || 0) <= 3); // Current season
+        const baselineGames = hist.filter((g: any) => (g.round || 0) > 3); // Previous season
+        
+        // Use current season games first, then fill with baseline if needed
+        let slice: any[] = [];
+        if (currentSeasonGames.length >= n) {
+          // Use only current season games
+          slice = currentSeasonGames.slice(-n);
+        } else {
+          // Use all current season games + some baseline games
+          const neededFromBaseline = n - currentSeasonGames.length;
+          slice = [
+            ...currentSeasonGames,
+            ...baselineGames.slice(-neededFromBaseline)
+          ];
+        }
+        
         const vals = slice.map((g: any) => Number(g[key]) || 0);
+        
+        // Debug logging for rolling points calculation
+        if (key === 'total_points' && (fplPlayer as any).web_name?.includes('Ekit')) {
+          console.log(`🔍 EKITIKE ROLLING DEBUG (${n}GW):`, {
+            histLength: hist.length,
+            currentSeasonGames: currentSeasonGames.length,
+            baselineGames: baselineGames.length,
+            sliceLength: slice.length,
+            slice: slice.map(g => ({ gw: g.round, pts: g.total_points, mins: g.minutes })),
+            vals: vals,
+            avg: vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
+          });
+        }
+        
         return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
       };
       return {
@@ -289,6 +576,24 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
     };
 
     const rolling = computeRolling();
+    const combinedHistory: any[] = (() => {
+      const baselinePlayers: Record<string, any> | undefined = baselineData2024_25?.players;
+      let baselineHistory: any[] = [];
+      if (baselinePlayers) {
+        const key1 = `${(fplPlayer as any).first_name || ''}_${(fplPlayer as any).second_name || ''}`;
+        const key2 = `${(fplPlayer as any).second_name || ''}_${(fplPlayer as any).first_name || ''}`;
+        if (baselinePlayers[key1]) baselineHistory = baselinePlayers[key1]?.season_history || [];
+        else if (baselinePlayers[key2]) baselineHistory = baselinePlayers[key2]?.season_history || [];
+      }
+      const hist = [
+        ...(Array.isArray(baselineHistory) ? baselineHistory : []),
+        ...(Array.isArray(playerHistory) ? playerHistory : []),
+      ];
+      hist.sort((a, b) => (a.round || 0) - (b.round || 0));
+      return hist;
+    })();
+    const last5CombinedMinsStr = combinedHistory.slice(-5).map((g: any) => String(g.minutes ?? 0)).join(', ');
+    const currentSeasonMinsStr = (Array.isArray(playerHistory) ? playerHistory.slice(-5) : []).map((g: any) => String(g.minutes ?? 0)).join(', ');
 
     // Build tiles data for the next 3 GWs
     const tiles = [gw1, gw2, gw3].map((xp, idx) => {
@@ -324,7 +629,7 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
         homeAwayLabel,
         fdrMultiplier,
         posMultiplier,
-        penaltyMultiplier: typeof p.penaltyMultiplier === 'number' ? p.penaltyMultiplier : 1.0,
+        penaltyMultiplier: penaltyMultiplier,
         rolling,
       };
     });
@@ -409,10 +714,19 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
 
         {/* Detailed cards for Next+1 and Next+2 GW with key drivers */}
         <View style={{ marginTop: 24 }}>
-          {[{ label: 'Next+1 GW', value: gw1 }, { label: 'Next+2 GW', value: gw2 }, { label: 'Next+3 GW', value: gw3 }].map((row, idx) => (
+          {[
+            { label: 'Next+1 GW', value: gw1, beforePenalty: gw1BeforePenalty }, 
+            { label: 'Next+2 GW', value: gw2, beforePenalty: gw2BeforePenalty }, 
+            { label: 'Next+3 GW', value: gw3, beforePenalty: gw3BeforePenalty }
+          ].map((row, idx) => (
             <View key={idx} style={styles.xpCard}>
               <Text style={[styles.xpCardTitle, { color: theme.colors.primary }]}>
                 {row.label}: {row.value.toFixed(1)} points
+                {penaltyMultiplier !== 1.0 && (
+                  <Text style={[styles.xpCardSubtitle, { color: theme.colors.textSecondary }]}>
+                    {' '}(before penalty: {row.beforePenalty.toFixed(1)})
+                  </Text>
+                )}
               </Text>
               <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Baseline History: {baselineGwCount} gameweeks</Text>
               <Text style={[styles.xpBullet, { color: theme.colors.textSecondary }]}>• Current Form: {Number(fplPlayer.form).toFixed(1)}</Text>
@@ -430,20 +744,22 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>ICT Index:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{Number(fplPlayer.ict_index).toFixed(1)}</Text></View>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Minutes Played (Current Season):</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{currentSeasonMinutes} mins</Text></View>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Total 8-GW XP:</Text><Text style={[styles.detailsValueAccent, { color: theme.colors.primary }]}>{total8 !== null ? `${total8.toFixed(1)} points` : '—'}</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>3-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>8-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>15-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 points</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Rolling Minutes:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>0 mins</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>3-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{rolling.roll3_points.toFixed(2)} points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{rolling.roll5_points.toFixed(2)} points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>8-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{rolling.roll8_points.toFixed(2)} points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>15-GW Rolling Points:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{rolling.roll15_points.toFixed(2)} points</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>5-GW Avg Minutes:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{rolling.roll5_minutes.toFixed(0)} mins</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Last 5 GW Minutes (combined):</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{last5CombinedMinsStr || '—'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Current Season GW Minutes:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{currentSeasonMinsStr || '—'}</Text></View>
         </View>
 
         {/* XP Calculation Factors */}
         <Text style={[styles.sectionTitle, { color: theme.colors.text, marginTop: 24 }]}>XP Calculation Factors</Text>
         <View style={styles.detailsGrid}>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty Multiplier:</Text><Text style={[styles.detailsValueAccent, { color: theme.colors.primary }]}>{typeof p.penaltyMultiplier === 'number' ? `${p.penaltyMultiplier.toFixed(2)}x` : '1.00x'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty Multiplier:</Text><Text style={[styles.detailsValueAccent, { color: theme.colors.primary }]}>{typeof penaltyMultiplier === 'number' ? `${penaltyMultiplier.toFixed(2)}x` : '1.00x'}</Text></View>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Fixture Difficulty (FDR):</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>N/A</Text></View>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>FDR Multiplier:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>N/A</Text></View>
-          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty System:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{(p.isNewToPL || p.isFromPromotedClub || p.isYoungPlayer) ? 'Penalties applied' : 'No penalties - No caps'}</Text></View>
+          <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Penalty System:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>{penaltyMultiplier !== 1.0 ? 'Penalties applied' : 'No penalties - No caps'}</Text></View>
           <View style={styles.detailsRow}><Text style={[styles.detailsLabel, { color: theme.colors.textSecondary }]}>Position Multiplier:</Text><Text style={[styles.detailsValue, { color: theme.colors.text }]}>
             {(() => {
               const mult = { 1: 1.08, 2: 1.23, 3: 1.20, 4: 1.23 } as any;
@@ -477,7 +793,7 @@ const PlayerStatsSection: React.FC<PlayerStatsSectionProps> = ({ fplPlayer }) =>
           </View>
           <View style={styles.rankingItem}>
             <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>Penalty</Text>
-            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{typeof p.penaltyMultiplier === 'number' ? `${(p.penaltyMultiplier * 100).toFixed(0)}%` : '—'}</Text>
+            <Text style={[styles.rankingValue, { color: theme.colors.primary }]}>{typeof penaltyMultiplier === 'number' ? `${(penaltyMultiplier * 100).toFixed(0)}%` : '—'}</Text>
           </View>
           <View style={styles.rankingItem}>
             <Text style={[styles.rankingLabel, { color: theme.colors.textSecondary }]}>History (24/25 + current)</Text>
@@ -1637,6 +1953,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 8,
+  },
+  xpCardSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
   },
   xpBullet: {
     fontSize: 14,

@@ -3,8 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider } from './src/context/ThemeContext';
-import { DataProvider } from './src/context/DataContext';
-import { useData } from './src/context/DataContext';
+import { DataProvider, useData } from './src/context/DataContext';
 
 // Screens
 import LoadingScreen from './src/screens/LoadingScreen';

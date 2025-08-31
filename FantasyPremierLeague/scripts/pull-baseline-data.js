@@ -44,6 +44,15 @@ function parseCSV(csvText) {
   return data;
 }
 
+// Preserve full Unicode letters (accents) when constructing names
+function sanitizeName(input) {
+  if (!input) return '';
+  return input
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\s\-'’]/gu, '')
+    .trim();
+}
+
 // Function to get player list from the GitHub repository
 async function getPlayerList() {
   try {
@@ -87,9 +96,9 @@ async function getPlayerList() {
         lastName = nameParts.slice(1).join(' ');
       }
       
-      // Clean up names
-      firstName = firstName.replace(/[^a-zA-Z\s]/g, '').trim();
-      lastName = lastName.replace(/[^a-zA-Z\s]/g, '').trim();
+      // Clean up names (Unicode-safe, keep accents)
+      firstName = sanitizeName(firstName);
+      lastName = sanitizeName(lastName);
       
       // Create a unique key using just the name (without ID)
       const nameKey = lastName ? `${firstName}_${lastName}` : firstName;
@@ -144,9 +153,8 @@ async function processPlayer(playerInfo) {
       return null;
     }
     
-    // VALIDATION: Ensure we have proper gameweek progression and no duplicates
-    const gameweekMap = new Map();
-    const validGameweeks = [];
+    // VALIDATION: Allow duplicate gameweeks (DGWs); collect valid rows
+    const validRows = [];
     
     for (const row of gameweekData) {
       const round = parseInt(row.round);
@@ -154,12 +162,6 @@ async function processPlayer(playerInfo) {
       // Skip invalid gameweeks
       if (isNaN(round) || round < 1 || round > 38) {
         console.log(`⚠️ Skipping invalid gameweek ${row.round} for ${playerInfo.folderName}`);
-        continue;
-      }
-      
-      // Skip if we already have this gameweek (prevent duplicates)
-      if (gameweekMap.has(round)) {
-        console.log(`⚠️ Skipping duplicate gameweek ${round} for ${playerInfo.folderName}`);
         continue;
       }
       
@@ -179,54 +181,57 @@ async function processPlayer(playerInfo) {
         continue;
       }
       
-      gameweekMap.set(round, row);
-      validGameweeks.push(round);
+      validRows.push(row);
     }
     
-    // Sort gameweeks to ensure proper progression
-    validGameweeks.sort((a, b) => a - b);
+    // Sort rows by round then kickoff_time if available
+    validRows.sort((a, b) => {
+      const ra = parseInt(a.round) || 0;
+      const rb = parseInt(b.round) || 0;
+      if (ra !== rb) return ra - rb;
+      const ta = a.kickoff_time || '';
+      const tb = b.kickoff_time || '';
+      return ta.localeCompare(tb);
+    });
     
-    if (validGameweeks.length === 0) {
+    if (validRows.length === 0) {
       console.log(`⚠️ No valid gameweek data for ${playerInfo.folderName}`);
       return null;
     }
     
     // Process the validated gameweek data
-    const seasonHistory = validGameweeks.map(round => {
-      const row = gameweekMap.get(round);
-      return {
-        round: round,
-        total_points: parseInt(row.total_points) || 0,
-        minutes: parseInt(row.minutes) || 0,
-        was_home: row.was_home === 'True',
-        opponent_team: parseInt(row.opponent_team) || 0,
-        goals_scored: parseInt(row.goals_scored) || 0,
-        assists: parseInt(row.assist) || 0, // Note: CSV has 'assist' not 'assists'
-        clean_sheets: parseInt(row.clean_sheets) || 0,
-        goals_conceded: parseInt(row.goals_conceded) || 0,
-        own_goals: parseInt(row.own_goals) || 0,
-        penalties_saved: parseInt(row.penalties_saved) || 0,
-        penalties_missed: parseInt(row.penalties_missed) || 0,
-        yellow_cards: parseInt(row.yellow_cards) || 0,
-        red_cards: parseInt(row.red_cards) || 0,
-        saves: parseInt(row.saves) || 0,
-        bonus: parseInt(row.bonus) || 0,
-        bps: parseInt(row.bps) || 0,
-        influence: parseFloat(row.influence) || 0,
-        creativity: parseFloat(row.creativity) || 0,
-        threat: parseFloat(row.threat) || 0,
-        ict_index: parseFloat(row.ict_index) || 0,
-        expected_goals: parseFloat(row.expected_goals) || 0,
-        expected_assists: parseFloat(row.expected_assists) || 0,
-        expected_goal_involvements: parseFloat(row.expected_goal_involvements) || 0,
-        expected_goals_conceded: parseFloat(row.expected_goals_conceded) || 0,
-        fixture: parseInt(row.fixture) || 0,
-        kickoff_time: row.kickoff_time || '',
-        team_a_score: parseInt(row.team_a_score) || 0,
-        team_h_score: parseInt(row.team_h_score) || 0,
-        value: parseInt(row.value) || 0
-      };
-    });
+    const seasonHistory = validRows.map(row => ({
+      round: parseInt(row.round) || 0,
+      total_points: parseInt(row.total_points) || 0,
+      minutes: parseInt(row.minutes) || 0,
+      was_home: row.was_home === 'True',
+      opponent_team: parseInt(row.opponent_team) || 0,
+      goals_scored: parseInt(row.goals_scored) || 0,
+      assists: parseInt(row.assist) || 0, // Note: CSV has 'assist' not 'assists'
+      clean_sheets: parseInt(row.clean_sheets) || 0,
+      goals_conceded: parseInt(row.goals_conceded) || 0,
+      own_goals: parseInt(row.own_goals) || 0,
+      penalties_saved: parseInt(row.penalties_saved) || 0,
+      penalties_missed: parseInt(row.penalties_missed) || 0,
+      yellow_cards: parseInt(row.yellow_cards) || 0,
+      red_cards: parseInt(row.red_cards) || 0,
+      saves: parseInt(row.saves) || 0,
+      bonus: parseInt(row.bonus) || 0,
+      bps: parseInt(row.bps) || 0,
+      influence: parseFloat(row.influence) || 0,
+      creativity: parseFloat(row.creativity) || 0,
+      threat: parseFloat(row.threat) || 0,
+      ict_index: parseFloat(row.ict_index) || 0,
+      expected_goals: parseFloat(row.expected_goals) || 0,
+      expected_assists: parseFloat(row.expected_assists) || 0,
+      expected_goal_involvements: parseFloat(row.expected_goal_involvements) || 0,
+      expected_goals_conceded: parseFloat(row.expected_goals_conceded) || 0,
+      fixture: parseInt(row.fixture) || 0,
+      kickoff_time: row.kickoff_time || '',
+      team_a_score: parseInt(row.team_a_score) || 0,
+      team_h_score: parseInt(row.team_h_score) || 0,
+      value: parseInt(row.value) || 0
+    }));
     
     // Calculate some aggregate stats
     const totalGames = seasonHistory.length;

@@ -37,6 +37,21 @@ export const styles = StyleSheet.create({
     marginBottom: 4,
   },
   
+  refreshButton: {
+    backgroundColor: '#245F73',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  
+  refreshButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  
   teamInfo: {
     marginTop: 8,
   },

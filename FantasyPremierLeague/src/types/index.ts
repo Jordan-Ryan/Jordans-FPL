@@ -26,8 +26,6 @@ export interface FPLPlayer {
   status: string;
   special: boolean;
   chance_of_playing_next_round: number | null;
-  photo?: string; // Add photo property for player images
-  photoUrl?: string; // Pre-loaded photo URL for instant display
   // Squad-specific properties
   squad_position?: number;
   is_starter?: boolean;
@@ -99,7 +97,6 @@ export interface PlayerPrediction {
   team: string;
   position: 'GK' | 'DEF' | 'MID' | 'FWD';
   price: number;
-  photoUrl?: string; // Pre-loaded photo URL for instant display
   
   // Extend to 8 gameweeks for strategic planning (GWP1 = next gameweek, GWP2 = next+1, etc.)
   gwp1_xp: number;
@@ -120,19 +117,6 @@ export interface PlayerPrediction {
     home_away: 'H' | 'A';
     difficulty?: number;
     expected_points: number;
-    // Additional fields for XP tab fixture display
-    is_home: boolean;
-    team_h: number;
-    team_a: number;
-    team_h_difficulty: number;
-    team_a_difficulty: number;
-  }>;
-  
-  // Teams array for fixture display
-  teams: Array<{
-    id: number;
-    name: string;
-    short_name: string;
   }>;
 }
 

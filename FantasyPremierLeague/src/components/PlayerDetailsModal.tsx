@@ -42,8 +42,7 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
     if (visible && fplPlayer) {
       const startTime = Date.now();
       console.log('🚀 PlayerDetailsModal: Opening modal for', fplPlayer.web_name);
-      console.log('🔍 PlayerDetailsModal: cachedData available:', !!cachedData);
-      console.log('🔍 PlayerDetailsModal: fplPlayer element_type:', fplPlayer.element_type);
+
       
       // INSTANT: Set rankings immediately from cached data - NO API CALLS
       setPlayerRankings({
@@ -71,7 +70,7 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
         try {
           // Filter players by the same position
           const samePositionPlayers = playerData.filter((p: any) => p.element_type === fplPlayer.element_type);
-          console.log('🔍 PlayerDetailsModal: Found', samePositionPlayers.length, 'players in same position');
+
           
           if (samePositionPlayers.length > 0) {
             // Show enhanced data from cache
@@ -93,7 +92,7 @@ const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
   }, [visible, fplPlayer, cachedData]);
 
   if (!fplPlayer || !team) {
-    console.log('🔍 PlayerDetailsModal: Missing fplPlayer or team data');
+
     return null;
   }
   

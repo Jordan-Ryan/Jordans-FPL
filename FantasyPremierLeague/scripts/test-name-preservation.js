@@ -4,7 +4,11 @@ const testNames = [
   'Abdoulaye_Doucouré_217',
   'Dara_O\'Shea_630',
   'Kevin_De Bruyne_345',
-  'Virgil_van Dijk_339'
+  'Virgil_van Dijk_339',
+  'Robert_Sánchez_185',
+  'João_Pedro_249',
+  'Moisés_Caicedo_123',
+  'Rico_Henríquez_999'
 ];
 
 testNames.forEach(folderName => {
@@ -33,9 +37,13 @@ testNames.forEach(folderName => {
     lastName = nameParts.slice(1).join(' ');
   }
   
-  // Clean up names - preserve hyphens, apostrophes, and common accented characters
-  firstName = firstName.replace(/[^a-zA-Z\s\-'éèêëàâäôöùûüçñ]/g, '').trim();
-  lastName = lastName.replace(/[^a-zA-Z\s\-'éèêëàâäôöùûüçñ]/g, '').trim();
+  // Unicode-safe name sanitation (preserves accents)
+  const sanitize = (s) => s
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\s\-'’]/gu, '')
+    .trim();
+  firstName = sanitize(firstName);
+  lastName = sanitize(lastName);
   
   // Create a unique key using just the name (without ID)
   const nameKey = lastName ? `${firstName}_${lastName}` : firstName;

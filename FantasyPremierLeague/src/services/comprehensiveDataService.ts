@@ -1,5 +1,7 @@
 import { fplApiService } from './fplApi';
 import { FPLPredictor2025_26 } from './fplPredictor2025-26';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const baselineData2024_25 = require('../data/2024-25-baseline-processed.json');
 
 export interface ComprehensivePlayerData {
   // FPL API data
@@ -122,6 +124,9 @@ class ComprehensiveDataService {
   private async performDataLoad(onProgress?: (step: number, description: string, percentage: number) => void): Promise<ComprehensiveAppData> {
     console.log('🚀 Starting comprehensive data load...');
     
+    // Clear fixture cache for fresh data
+    this.fixtureCache.clear();
+    
     try {
       // Step 1: Fetch all player data from FPL API
       onProgress?.(1, 'Fetching player data from FPL...', 10);
@@ -129,17 +134,7 @@ class ComprehensiveDataService {
       const fplPlayers = await fplApiService.fetchAllPlayers();
       console.log(`✅ Fetched ${fplPlayers.length} players`);
       
-      // Debug: Check player structure and photo information
-      if (fplPlayers.length > 0) {
-        const samplePlayer = fplPlayers[0];
-        console.log('🔍 Sample player structure:', {
-          keys: Object.keys(samplePlayer),
-          hasPhoto: 'photo' in samplePlayer,
-          photoValue: samplePlayer.photo,
-          id: samplePlayer.id,
-          web_name: samplePlayer.web_name
-        });
-      }
+
 
       // Step 2: Fetch teams data
       onProgress?.(2, 'Fetching team data...', 20);
@@ -153,11 +148,7 @@ class ComprehensiveDataService {
       const fixtures = await fplApiService.fetchFixturesData();
       console.log(`✅ Fetched ${fixtures.length} fixtures`);
       
-      // Debug: log fixture structure
-      if (fixtures.length > 0) {
-        console.log('🔍 First fixture structure:', fixtures[0]);
-        console.log('🔍 Fixture keys:', Object.keys(fixtures[0]));
-      }
+
 
       // Step 4: Fetch current gameweek
       onProgress?.(4, 'Getting current gameweek...', 40);
@@ -185,11 +176,10 @@ class ComprehensiveDataService {
 
       // Step 8: Skip image pre-loading (handled in UI)
       onProgress?.(8, 'Downloading player photos...', 90);
-      console.log('🖼️ Step 8: Downloading player photos...');
+      // Removed verbose photo loading logs
       
       // Check existing photos first
       const existingCount = await fplApiService.getDownloadedPhotoCount();
-      console.log(`🖼️ Found ${existingCount} existing photos`);
       
       const playersWithPhotos = await this.preloadPlayerPhotos(processedPlayers);
       console.log(`✅ Photo processing completed for ${playersWithPhotos.length} players`);
@@ -234,33 +224,13 @@ class ComprehensiveDataService {
       onProgress?.(5, description, percentage);
     });
     
-    console.log(`🔍 Predictions received: ${predictions.length}`);
-    if (predictions.length > 0) {
-      console.log('🔍 First prediction sample:', {
-        player_id: predictions[0].player_id,
-        web_name: predictions[0].web_name,
-        gwp1_xp: predictions[0].gwp1_xp,
-        total_3gw_xp: predictions[0].total_3gw_xp
-      });
-    }
-    
-    // Debug: Check ID fields
-    console.log('🔍 Sample FPL player IDs:', players.slice(0, 3).map((p: any) => ({ id: p.id, web_name: p.web_name })));
-    console.log('🔍 Sample prediction IDs:', predictions.slice(0, 3).map((p: any) => ({ player_id: p.player_id, web_name: p.web_name })));
+
     
     // Merge predictions with FPL data
     const mergedPlayers = players.map(player => {
       const prediction = predictions.find(p => p.player_id === player.id);
       
-      if (player.web_name === 'M.Salah' || player.web_name === 'Raya') {
-        console.log(`🔍 Merging ${player.web_name} (ID: ${player.id}):`, {
-          foundPrediction: !!prediction,
-          predictionId: prediction?.player_id,
-          predictionName: prediction?.web_name,
-          gwp1_xp: prediction?.gwp1_xp,
-          total_3gw_xp: prediction?.total_3gw_xp
-        });
-      }
+
       
       const mergedPlayer = {
         ...player,
@@ -278,12 +248,7 @@ class ComprehensiveDataService {
         isHighlighted: !prediction?.baselineHistoryLength || (prediction.baselineHistoryLength || 0) === 0
       } as ComprehensivePlayerData;
       
-      if (player.web_name === 'M.Salah' || player.web_name === 'Raya') {
-        console.log(`🔍 ${player.web_name} merged result:`, {
-          gwp1_xp: mergedPlayer.gwp1_xp,
-          total_3gw_xp: mergedPlayer.total_3gw_xp
-        });
-      }
+
       
       return mergedPlayer;
     });
@@ -298,16 +263,53 @@ class ComprehensiveDataService {
     fixtures: any[], 
     currentGameweek: number
   ): ComprehensivePlayerData[] {
+    // Helper: robust baseline length lookup when predictor didn't populate it
+    const getBaselineLen = (player: any): number => {
+      try {
+        const baselinePlayers: Record<string, any> | undefined = baselineData2024_25?.players;
+        if (!baselinePlayers) return 0;
+        const firstName = player.first_name || player.name?.split(' ')?.[0] || '';
+        const secondName = player.second_name || player.name?.split(' ')?.slice(1).join(' ') || '';
+        const key1 = `${firstName}_${secondName}`;
+        const key2 = `${secondName}_${firstName}`;
+        if (baselinePlayers[key1]) return (baselinePlayers[key1]?.season_history || []).length;
+        if (baselinePlayers[key2]) return (baselinePlayers[key2]?.season_history || []).length;
+        // Strict web_name underscore equality (preserve accents)
+        const webUnderscore = String(player.web_name || '').replace(/\s+/g, '_');
+        if (baselinePlayers[webUnderscore]) return (baselinePlayers[webUnderscore]?.season_history || []).length;
+        // Strict normalized equality only (no substring fuzzy matching)
+        const normalize = (s: string) => String(s || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9_\s]/g, '');
+        const allKeys = Object.keys(baselinePlayers);
+        const normWeb = normalize(webUnderscore);
+        const exactNormKey = allKeys.find(k => normalize(k) === normWeb);
+        if (exactNormKey) return (baselinePlayers[exactNormKey]?.season_history || []).length;
+        return 0;
+      } catch {
+        return 0;
+      }
+    };
+
     return players.map(player => {
       const team = teams.find(t => t.id === player.team);
       const position = ['', 'GK', 'DEF', 'MID', 'FWD'][player.element_type] || 'TBD';
       const price = (player.now_cost || 0) / 10;
+      // Use predictor/cached baseline unless missing; recompute only if 0
+      const effectiveBaseline = (player.baselineHistoryLength || 0) > 0
+        ? player.baselineHistoryLength
+        : getBaselineLen(player);
+
 
       // Pre-calculate next 3 fixtures
-      const next3Fixtures = this.calculateNext3Fixtures(player.team, fixtures, currentGameweek);
+      const next3Fixtures = this.calculateNext3Fixtures(player.team, fixtures, currentGameweek, teams);
 
       return {
         ...player,
+        baselineHistoryLength: effectiveBaseline,
+        isHighlighted: (effectiveBaseline || 0) === 0,
         displayName: player.web_name || player.name,
         displayTeam: team?.short_name || 'TBD',
         displayPosition: position,
@@ -317,35 +319,37 @@ class ComprehensiveDataService {
     });
   }
 
-  private calculateNext3Fixtures(teamId: number, fixtures: any[], currentGameweek: number) {
+  private fixtureCache: Map<string, any[]> = new Map();
+
+  private calculateNext3Fixtures(teamId: number, fixtures: any[], currentGameweek: number, teams?: any[]) {
     if (!fixtures.length) return [];
     
-    console.log(`🔍 Calculating next 3 fixtures for team ${teamId} from current GW ${currentGameweek}`);
-    console.log(`🔍 Total fixtures available: ${fixtures.length}`);
+    // Cache fixtures to avoid recalculating for the same team
+    const cacheKey = `${teamId}-${currentGameweek}`;
+    if (this.fixtureCache.has(cacheKey)) {
+      return this.fixtureCache.get(cacheKey)!;
+    }
+    
+    // Removed verbose fixture logging
     
     const teamFixtures = fixtures.filter(fixture => 
       fixture.team_h === teamId || fixture.team_a === teamId
     );
     
-    console.log(`🔍 Fixtures for team ${teamId}: ${teamFixtures.length}`);
-    
     const nextGameweeks = [currentGameweek + 1, currentGameweek + 2, currentGameweek + 3];
-    console.log(`🔍 Looking for fixtures in gameweeks: ${nextGameweeks.join(', ')}`);
     
     const nextFixtures = teamFixtures
       .filter(fixture => nextGameweeks.includes(fixture.event))
       .sort((a, b) => a.event - b.event)
       .slice(0, 3);
     
-    console.log(`🔍 Found ${nextFixtures.length} next fixtures for team ${teamId}`);
-    
     return nextFixtures.map(fixture => {
       const isHome = fixture.team_h === teamId;
       const opponentId = isHome ? fixture.team_a : fixture.team_h;
       
-      // Get opponent name from teams array (we'll need to pass teams here)
-      // For now, use the team ID as a fallback
-      const opponent = `Team ${opponentId}`;
+      // Get opponent name from teams array
+      const opponentTeam = teams?.find(team => team.id === opponentId);
+      const opponent = opponentTeam ? opponentTeam.short_name : `Team ${opponentId}`;
       const venue = isHome ? '(H)' : '(A)';
       
       // Get difficulty rating from FPL API fields
@@ -373,14 +377,18 @@ class ComprehensiveDataService {
         isHome
       };
       
-      console.log(`🔍 Fixture for team ${teamId}: GW${fixture.event} vs ${opponent} ${venue} (${difficultyLevel})`);
+      // Removed verbose fixture logging
       
       return result;
     });
+    
+    // Cache the result
+    this.fixtureCache.set(cacheKey, nextFixtures);
+    return nextFixtures;
   }
 
   private async preloadPlayerPhotos(players: ComprehensivePlayerData[]): Promise<ComprehensivePlayerData[]> {
-    console.log('🖼️ Starting batch photo pre-loading...');
+    // Removed verbose photo loading logs
     
     try {
       // Get ghost image path for players without photos
@@ -414,10 +422,51 @@ class ComprehensiveDataService {
   }
 
   private async createBest11Teams(players: ComprehensivePlayerData[], currentGameweek: number): Promise<any> {
-    // Temporarily return empty array to avoid type mismatch
-    // TODO: Fix type compatibility between ComprehensivePlayerData and PlayerPrediction
-    console.log('⚠️ Best 11 teams creation temporarily disabled due to type mismatch');
-    return [];
+    try {
+      console.log('🏆 Creating Best 11 teams for gameweeks 2, 3, 4...');
+      
+      // Convert ComprehensivePlayerData to PlayerPrediction format for the optimizer
+      const playerPredictions = players.map(player => ({
+        player_id: player.id,
+        name: player.web_name,
+        team: player.displayTeam,
+        position: player.displayPosition,
+        price: player.now_cost / 10,
+        gwp1_xp: player.gwp1_xp,
+        gwp2_xp: player.gwp2_xp,
+        gwp3_xp: player.gwp3_xp,
+        gwp4_xp: player.gwp4_xp,
+        gwp5_xp: player.gwp5_xp,
+        gwp6_xp: player.gwp6_xp,
+        gwp7_xp: player.gwp7_xp,
+        gwp8_xp: player.gwp8_xp,
+        total_3gw_xp: player.total_3gw_xp,
+        total_8gw_xp: player.total_8gw_xp,
+        fixtures: [], // Not needed for Best 11
+        teams: [] // Not needed for Best 11
+      }));
+
+      // Import the optimizer
+      const { OptimalTeamBuilder } = await import('./optimalTeamBuilder');
+      const optimizer = new OptimalTeamBuilder();
+
+      // Generate teams for the next 3 gameweeks from current
+      const best11Teams: any = {};
+      const nextGameweeks = [currentGameweek + 1, currentGameweek + 2, currentGameweek + 3];
+      
+      for (const gw of nextGameweeks) {
+        console.log(`  📊 Generating Best 11 for GW${gw}...`);
+        const team = optimizer.generateOptimalTeam(playerPredictions, gw);
+        best11Teams[`gw${gw}`] = team;
+        console.log(`  ✅ GW${gw} Best 11: ${team.formation} formation, ${team.total_expected_points.toFixed(1)} expected points`);
+      }
+
+      console.log('✅ Best 11 teams creation completed');
+      return best11Teams;
+    } catch (error) {
+      console.error('❌ Error creating Best 11 teams:', error);
+      return {};
+    }
   }
 
   getCachedData(): ComprehensiveAppData | null {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface CachedAppData {
   fplPlayers: any[];
@@ -33,6 +33,7 @@ interface DataContextType {
   cachedData: CachedAppData | null;
   setCachedData: (data: CachedAppData) => void;
   clearCache: () => void;
+  forceRefresh: () => void;
   isDataLoaded: boolean;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -57,28 +58,18 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [isLoading, setIsLoadingState] = useState<boolean>(true); // Start true so LoadingScreen shows
 
   const setCachedData = (data: CachedAppData) => {
-    console.log('🔍 DataContext: Setting cached data...');
+
     console.log('  - Players count:', data.preRenderedPlayersTable?.length || 0);
     
     // Check specific players for XP values
     const salah = data.preRenderedPlayersTable?.find(p => p.web_name === 'M.Salah');
     if (salah) {
-      console.log('🔍 DataContext: Salah XP data being cached:', {
-        gwp1_xp: salah.gwp1_xp,
-        gwp2_xp: salah.gwp2_xp,
-        gwp3_xp: salah.gwp3_xp,
-        total_3gw_xp: salah.total_3gw_xp
-      });
+
     }
     
     const raya = data.preRenderedPlayersTable?.find(p => p.web_name === 'Raya');
     if (raya) {
-      console.log('🔍 DataContext: Raya XP data being cached:', {
-        gwp1_xp: raya.gwp1_xp,
-        gwp2_xp: raya.gwp2_xp,
-        gwp3_xp: raya.gwp3_xp,
-        total_3gw_xp: raya.total_3gw_xp
-      });
+
     }
     
     setCachedDataState(data);
@@ -90,25 +81,42 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   };
 
   const clearCache = () => {
+    console.log('🗑️ DataContext: Clearing cache...');
     setCachedDataState(null);
   };
 
-  const isDataLoaded = cachedData !== null && !isLoading && cachedData.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0;
+  const forceRefresh = () => {
+    console.log('🔄 DataContext: Force refreshing data...');
+    setCachedDataState(null);
+    // This will trigger a fresh data load with the new logic
+  };
+
+  // Auto-clear cache if we detect stale data (for development)
+  // DISABLED: This was too aggressive and prevented loading
+  // useEffect(() => {
+  //   if (cachedData?.preRenderedPlayersTable) {
+  //     // Check if we have old cached data that might be incorrect
+  //     const hasOldData = cachedData.preRenderedPlayersTable.some(player => 
+  //       player.web_name === 'Savinho' && (player.baselineHistoryLength || 0) === 0
+  //     );
+  //     
+  //     if (hasOldData) {
+  //       console.log('🔄 DataContext: Detected stale cached data, auto-refreshing...');
+  //       setCachedDataState(null);
+  //     }
+  //   }
+  // }, [cachedData]);
+
+  const isDataLoaded = Boolean(cachedData !== null && !isLoading && cachedData.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0);
   
-  // Debug logging for data loading state
-  console.log('🔍 DataContext state:', {
-    hasCachedData: !!cachedData,
-    isLoading,
-    hasPreRenderedPlayers: !!(cachedData?.preRenderedPlayersTable && cachedData.preRenderedPlayersTable.length > 0),
-    isDataLoaded,
-    preRenderedPlayersCount: cachedData?.preRenderedPlayersTable?.length || 0
-  });
+
 
   return (
     <DataContext.Provider value={{
       cachedData,
       setCachedData,
       clearCache,
+      forceRefresh,
       isDataLoaded,
       isLoading,
       setIsLoading

@@ -18,10 +18,12 @@ import { FPLPlayer, FPLTeam } from '../types';
 import { styles } from '../styles/PlayersScreen.styles';
 import { Ionicons } from '@expo/vector-icons';
 import PlayerPhoto from '../components/PlayerPhoto';
+import { FPLPredictor2025_26 } from '../services/fplPredictor2025-26';
 import PlayerDetailsModal from '../components/PlayerDetailsModal';
+// (Revert to using cached baseline from pre-rendered data)
 
   interface SortConfig {
-    key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gwp1_xp' | 'gwp2_xp' | 'gwp3_xp' | 'total_3gw_xp';
+    key: keyof FPLPlayer | 'gw1' | 'total_points' | 'ict_index' | 'transfers_in' | 'transfers_out' | 'bonus_points' | 'next_gw1' | 'next_gw2' | 'next_gw3' | 'gwp1_xp' | 'gwp2_xp' | 'gwp3_xp' | 'total_3gw_xp' | 'baselineHistoryLength';
     direction: 'asc' | 'desc';
   }
 
@@ -56,11 +58,69 @@ const PlayersScreen: React.FC = () => {
   const [showPlayerDetails, setShowPlayerDetails] = useState(false);
   // Remove displayedPlayersCount - show all players
 
+  // Function to recalculate baseline data using fresh logic
+  const recalculateBaselineData = (player: any) => {
+    try {
+      const predictor = new FPLPredictor2025_26();
+      const baselineData = predictor.findPlayerBaseline('', player);
+      return baselineData ? (baselineData.season_history || []).length : 0;
+    } catch (error) {
+      console.error('Error recalculating baseline for', player.web_name, error);
+      return player.baselineHistoryLength || 0; // Fallback to cached value
+    }
+  };
+
+  // Derived: estimate promoted teams from baseline coverage and expose zero-baseline counts
+  const { promotedTeamIds, zeroBaselineAll, zeroBaselineExcludingPromoted } = useMemo(() => {
+    try {
+      if (!players || players.length === 0) {
+        return { promotedTeamIds: new Set<number>(), zeroBaselineAll: 0, zeroBaselineExcludingPromoted: 0 };
+      }
+
+      const byTeam: Record<number, { total: number; withBaseline: number }> = {};
+      for (const p of players) {
+        const teamId = (p as any).team as number;
+        if (!byTeam[teamId]) byTeam[teamId] = { total: 0, withBaseline: 0 };
+        byTeam[teamId].total += 1;
+        if ((p as any).baselineHistoryLength && (p as any).baselineHistoryLength > 0) {
+          byTeam[teamId].withBaseline += 1;
+        }
+      }
+
+      // Heuristic: teams with very low baseline coverage are likely newly promoted
+      const promoted = new Set<number>();
+      Object.entries(byTeam).forEach(([teamIdStr, stats]) => {
+        const teamId = parseInt(teamIdStr, 10);
+        const coverage = stats.total > 0 ? stats.withBaseline / stats.total : 0;
+        if (stats.total >= 15 && stats.withBaseline <= 3 && coverage <= 0.15) {
+          promoted.add(teamId);
+        }
+      });
+
+      const zeroAll = players.filter(p => (p as any).baselineHistoryLength === 0).length;
+      const zeroExProm = players.filter(p => (p as any).baselineHistoryLength === 0 && !promoted.has((p as any).team)).length;
+
+      // Log details for investigation
+      try {
+        const list = players
+          .filter(p => (p as any).baselineHistoryLength === 0 && !promoted.has((p as any).team))
+          .map(p => ({ id: (p as any).id, web_name: (p as any).web_name, team: getClubName((p as any).team) }));
+        console.log('🔎 Zero-baseline (excluding promoted) count:', zeroExProm);
+        console.log('🔎 Estimated promoted team IDs:', Array.from(promoted.values()));
+        console.log('🔎 Players with baseline=0 (excluding promoted):', list);
+      } catch {}
+
+      return { promotedTeamIds: promoted, zeroBaselineAll: zeroAll, zeroBaselineExcludingPromoted: zeroExProm };
+    } catch {
+      return { promotedTeamIds: new Set<number>(), zeroBaselineAll: 0, zeroBaselineExcludingPromoted: 0 };
+    }
+  }, [players, teams]);
+
   // Use cached data when available
   useEffect(() => {
     const startTime = Date.now();
     console.log('🚀 PlayersScreen: Starting to load...');
-    console.log('🔍 Debug info:');
+
     console.log('  - cachedData exists:', !!cachedData);
     console.log('  - isDataLoaded:', isDataLoaded);
     
@@ -85,13 +145,7 @@ const PlayersScreen: React.FC = () => {
         setLastGameweek(Math.max(1, cachedData.currentGameweek.id - 1));
         setLoading(false);
         
-        // Debug: Check XP data for first few players
-        console.log('🔍 XP Data Check:');
-        for (let i = 0; i < Math.min(3, cachedData.preRenderedPlayersTable.length); i++) {
-          const player = cachedData.preRenderedPlayersTable[i];
-          console.log(`  ${player.web_name}: gwp1_xp=${player.gwp1_xp}, gwp2_xp=${player.gwp2_xp}, gwp3_xp=${player.gwp3_xp}, total_3gw_xp=${player.total_3gw_xp}`);
-          console.log(`  ${player.web_name}: has gwp1_xp: ${'gwp1_xp' in player}, has gwp2_xp: ${'gwp2_xp' in player}, has gwp3_xp: ${'gwp3_xp' in player}, has total_3gw_xp: ${'total_3gw_xp' in player}`);
-        }
+
         
         const loadTime = Date.now() - startTime;
         console.log(`✅ PlayersScreen: Loaded in ${loadTime}ms - should be instant now!`);
@@ -157,6 +211,8 @@ const PlayersScreen: React.FC = () => {
     return team ? team.name : 'Unknown';
   };
 
+  // Removed strict resolver; we trust cached pre-rendered baseline
+
 
 
   // Get position name by element type
@@ -218,6 +274,10 @@ const PlayersScreen: React.FC = () => {
         let bValue: any;
 
         switch (sortConfig.key) {
+          case 'baselineHistoryLength':
+            aValue = a.baselineHistoryLength || 0;
+            bValue = b.baselineHistoryLength || 0;
+            break;
           case 'web_name':
             aValue = a.web_name.toLowerCase();
             bValue = b.web_name.toLowerCase();
@@ -409,6 +469,10 @@ const PlayersScreen: React.FC = () => {
       let bValue: any;
 
       switch (sortConfig.key) {
+        case 'baselineHistoryLength':
+          aValue = a.baselineHistoryLength || 0;
+          bValue = b.baselineHistoryLength || 0;
+          break;
         case 'web_name':
           aValue = a.web_name.toLowerCase();
           bValue = b.web_name.toLowerCase();
@@ -823,8 +887,6 @@ const PlayersScreen: React.FC = () => {
         <Text style={[styles.playerCountText, { color: theme.colors.text }]}>
           Showing {filteredAndSortedPlayers.length} players
         </Text>
-        
-
       </View>
 
 
@@ -843,7 +905,6 @@ const PlayersScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
             
-
             
             <TouchableOpacity
               style={styles.headerCell}
@@ -896,6 +957,16 @@ const PlayersScreen: React.FC = () => {
             >
               <Text style={[styles.headerText, { color: theme.colors.text }]}> 
                 ICT {getSortIndicator('ict_index')}
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Baseline GW header aligned with row position (after ICT) */}
+            <TouchableOpacity
+              style={styles.headerCell}
+              onPress={() => handleSort('baselineHistoryLength')}
+            >
+              <Text style={[styles.headerText, { color: theme.colors.text }]}> 
+                Baseline GW {getSortIndicator('baselineHistoryLength')}
               </Text>
             </TouchableOpacity>
             
@@ -999,23 +1070,24 @@ const PlayersScreen: React.FC = () => {
             showsVerticalScrollIndicator={false}
           >
             {filteredAndSortedPlayers.map((player: any, index: number) => {
-              // Check if player has 24/25 baseline history
-              // A player has baseline data if they have baselineHistoryLength > 0
-              // This indicates they played in the 2024-25 season and have historical data
-              const hasBaselineHistory = (player.baselineHistoryLength || 0) > 0;
+              // Check if player has 24/25 baseline history using fresh calculation
+              // This ensures consistency with XP calculation
+              const freshBaselineLength = recalculateBaselineData(player);
+              const hasBaselineHistory = freshBaselineLength > 0;
               
               // Highlight ALL players who have NO baseline history (regardless of XP)
               // This shows which players are new to the Premier League
               const shouldHighlightOrange = !hasBaselineHistory;
               
               // Debug logging for specific players
-              if (player.web_name === 'Salah' || player.web_name === 'Elkitike') {
+              if (player.web_name === 'Salah' || player.web_name === 'Elkitike' || player.web_name === 'Savinho') {
                 console.log(`${player.web_name} debug:`, {
                   gwp1_xp: player.gwp1_xp,
                   gwp2_xp: player.gwp2_xp,
                   gwp3_xp: player.gwp3_xp,
                   total_3gw_xp: player.total_3gw_xp,
-                  baselineHistoryLength: player.baselineHistoryLength || 0,
+                  cachedBaselineLength: player.baselineHistoryLength || 0,
+                  freshBaselineLength: freshBaselineLength,
                   season_history_length: player.season_history?.length,
                   hasBaselineHistory: hasBaselineHistory,
                   // Check if this is a new player (no baseline history)
@@ -1105,6 +1177,13 @@ const PlayersScreen: React.FC = () => {
                 <View style={styles.statCell}>
                   <Text style={[styles.statText, { color: theme.colors.text }]}> 
                     {parseFloat(player.ict_index) || 0}
+                  </Text>
+                </View>
+
+                {/* Baseline GW count (using fresh calculation) */}
+                <View style={styles.statCell}>
+                  <Text style={[styles.statText, { color: freshBaselineLength === 0 ? '#DC2626' : theme.colors.text }]}> 
+                    {freshBaselineLength}
                   </Text>
                 </View>
                 

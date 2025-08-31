@@ -41,8 +41,12 @@ export class OptimalTeamBuilder {
   /**
    * Generate optimal team for specific gameweek using our predicted expected points
    */
-  generateOptimalTeam(players: PlayerPrediction[], gameweek: 2 | 3 | 4): OptimalTeam {
-    const xpField = `gw${gameweek}_xp`;
+  generateOptimalTeam(players: PlayerPrediction[], gameweek: number): OptimalTeam {
+    // Map gameweek to correct field: GW3 -> gwp1_xp, GW4 -> gwp2_xp, GW5 -> gwp3_xp
+    const fieldIndex = gameweek - 2; // Convert GW3->1, GW4->2, GW5->3
+    const xpField = `gwp${fieldIndex}_xp`;
+    
+    console.log(`🔍 Best 11 Debug - GW${gameweek}: Starting with ${players.length} players`);
     
     // Convert players to PlayerWithValue format
     const playersWithValue: PlayerWithValue[] = players.map(player => ({
@@ -51,16 +55,33 @@ export class OptimalTeamBuilder {
       valueEfficiency: (player[xpField] as number) / player.price
     }));
     
+    // Filter players with positive XP
+    const playersWithXP = playersWithValue.filter(p => p.xp > 0);
+    console.log(`🔍 Best 11 Debug - GW${gameweek}: ${playersWithXP.length} players with positive XP`);
+    
+    if (playersWithXP.length === 0) {
+      console.log(`❌ Best 11 Debug - GW${gameweek}: No players with positive XP, returning empty team`);
+      return this.createEmptyTeam(gameweek);
+    }
+    
     // Try each formation to find the best one
     let bestTeam: OptimalTeam | null = null;
     let bestScore = -1;
     
     for (const formation of this.VALID_FORMATIONS) {
-      const team = this.buildTeamForFormation(playersWithValue, formation, gameweek, xpField);
+      console.log(`🔍 Best 11 Debug - GW${gameweek}: Trying formation ${formation.name}`);
+      const team = this.buildTeamForFormation(playersWithXP, formation, gameweek, xpField);
       if (team && team.total_expected_points > bestScore) {
         bestScore = team.total_expected_points;
         bestTeam = team;
+        console.log(`✅ Best 11 Debug - GW${gameweek}: Found better team with ${formation.name}: ${team.total_expected_points} points`);
+      } else {
+        console.log(`❌ Best 11 Debug - GW${gameweek}: Formation ${formation.name} failed or worse`);
       }
+    }
+    
+    if (!bestTeam) {
+      console.log(`❌ Best 11 Debug - GW${gameweek}: No valid teams found, returning empty team`);
     }
     
     return bestTeam || this.createEmptyTeam(gameweek);
